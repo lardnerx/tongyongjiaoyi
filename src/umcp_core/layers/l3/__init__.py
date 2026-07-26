@@ -13,6 +13,7 @@ from umcp_core.layers.l3.matching import (
     PreMatchFilter,
     ProposalBid,
     ReverseAuction,
+    SkillMatchScorer,
     TrustThresholdFilter,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "CredentialFilter",
     "TrustThresholdFilter",
     "CapabilityFilter",
+    "SkillMatchScorer",
     "NearestMatch",
     "AuctionMatch",
 ]

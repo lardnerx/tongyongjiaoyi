@@ -216,3 +216,23 @@ class AuctionMatch(Bidding):
     实际编码建议直接使用 Bidding。
     """
 
+
+class SkillMatchScorer:
+    """技能匹配评分器（预置通用）。
+
+    基于 Task.required_skills 与 Resource.skills 的标签交集数量评分。
+    交集越大评分越高，配合 InstantMatch 的 reverse=True 实现高分优先。
+
+    通用性：任何需要技能标签匹配的场景（陪驾、家教、家政、维修）都可复用。
+    """
+
+    def __call__(self, task: Task, resource: Resource) -> float:
+        required = task.structured_fields.get("required_skills", [])
+        if not required:
+            return 0.0
+        skills = resource.metadata.get("skills", [])
+        if not skills:
+            return 0.0
+        intersection = set(required) & set(skills)
+        return float(len(intersection))
+
