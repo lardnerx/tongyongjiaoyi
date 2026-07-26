@@ -1,0 +1,11 @@
+{
+  "name": "escort-driving",
+  "version": "1.0.0",
+  "task_types": ["escort_driving.tasks.EscortTask"],
+  "resource_types": ["escort_driving.resources.CoachResource"],
+  "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
+  "trust_dimensions": ["teaching_ability", "patience", "safety_record"],
+  "commission_rate": 0.20,
+  "hourly_rate": 80.0,
+  "access_rule_expression": "hasCredential('coach_license') && trustScore >= 4.0"
+}
