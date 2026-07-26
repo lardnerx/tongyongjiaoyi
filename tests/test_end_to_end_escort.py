@@ -105,10 +105,12 @@ class TestEndToEndWithEscortPlugin:
         task.complete()
         deal.complete()
         server.payment_schema.capture(order)
+        coach.update_status(ResourceStatus.IDLE)  # 释放车辆
 
         assert task.status == TaskStatus.COMPLETED
         assert deal.status == DealStatus.COMPLETED
         assert order.status == PaymentStatus.CAPTURED
+        assert coach.status == ResourceStatus.IDLE
 
         # ===== L5 评价：学员评教练 =====
         from umcp_core.layers.l5 import Evaluation
