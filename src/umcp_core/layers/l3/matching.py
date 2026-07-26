@@ -103,7 +103,8 @@ class InstantMatch(MatchStrategy):
     """系统派单策略（预置）。
 
     基于规则自动选择最优资源，用于标准化任务（打车、配送等）。
-    默认按距离/可用性排序，选取第一个可用资源。
+    有 scorer 时按 scorer 返回值降序排列（高分优先，如负距离近者更接近 0 更大）；
+    无 scorer 时按资源更新时间降序排列（最近活跃优先）。
     """
 
     def __init__(
@@ -120,7 +121,8 @@ class InstantMatch(MatchStrategy):
             return MatchResult(task_id=task.task_id)
 
         if self.scorer is not None:
-            filtered.sort(key=lambda r: self.scorer(task, r))
+            # scorer 返回值越大表示越匹配（如负距离：近者返回值更接近 0，更大）
+            filtered.sort(key=lambda r: self.scorer(task, r), reverse=True)
         else:
             # 默认：按资源更新时间排序（最近活跃优先）
             filtered.sort(key=lambda r: r.updated_at, reverse=True)
