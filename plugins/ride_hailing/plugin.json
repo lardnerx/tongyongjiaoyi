@@ -1,0 +1,10 @@
+{
+  "name": "ride-hailing",
+  "version": "1.0.0",
+  "task_types": ["ride_hailing.tasks.RideTask"],
+  "resource_types": ["ride_hailing.resources.DriverResource"],
+  "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
+  "trust_dimensions": ["punctuality", "cleanliness", "driving_smoothness", "communication"],
+  "commission_rate": 0.20,
+  "access_rule_expression": "hasCredential('driver_license') && trustScore >= 4.0"
+}

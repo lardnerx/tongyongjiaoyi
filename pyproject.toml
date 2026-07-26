@@ -35,9 +35,10 @@ where = ["src"]
 umcp_core = ["py.typed"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "plugins"]
 python_files = "test_*.py"
 asyncio_mode = "auto"
+pythonpath = ["src", "plugins"]
 
 [tool.mypy]
 python_version = "3.10"
