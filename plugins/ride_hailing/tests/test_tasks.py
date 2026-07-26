@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from umcp_core.core import DomainTag, TaskStatus
-from umcp_core.core.domain import SpatioTemporalConstraint
 from ride_hailing.tasks import RideTask
 
 

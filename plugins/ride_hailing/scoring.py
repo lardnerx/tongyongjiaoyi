@@ -30,7 +30,8 @@ class RideMatchScorer:
     """网约车匹配评分器。
 
     按司机当前位置到乘客起点的距离评分。
-    返回负距离（-distance），使 InstantMatch 升序排列时近者排在前。
+    返回负距离（-distance），使 InstantMatch 降序排列时近者排在前
+    （近者返回值更接近 0，更大，降序排第一）。
     """
 
     def __call__(self, task: Task, resource: Resource) -> float:

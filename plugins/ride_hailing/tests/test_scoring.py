@@ -30,7 +30,7 @@ class TestHaversine:
 
 class TestRideMatchScorer:
     def test_closer_driver_scores_higher(self):
-        """距离近的司机评分应更高（返回负距离，近者绝对值小，升序排在前）。"""
+        """距离近的司机评分应更高（返回负距离，近者更接近 0，降序排在前）。"""
         task = RideTask(
             demander_id="u1",
             domain_tag=DomainTag.of("ride"),
