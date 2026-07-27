@@ -116,6 +116,8 @@ def test_each_domain_uses_own_trust_dimensions(server: UMCPServer):
 
 def test_access_rule_does_not_leak_across_domains(server: UMCPServer):
     """ride 的 driver_license 要求不卡 group_buying 买家。"""
+    from umcp_core.layers.l5 import Evaluation
+
     # 用户只有 business_license，无 driver_license
     gb_user = _make_user(
         user_id="gb_buyer",
@@ -128,6 +130,20 @@ def test_access_rule_does_not_leak_across_domains(server: UMCPServer):
     assert server.rule_engine.check_access(gb_user, ride_task) is False
 
     # group_buying task：有 business_license，应通过
+    # 记录评价使 trustScore 通过 trust engine 路由达标（>= 3.0）
+    server.trust_engine_for("group_buying").record_evaluation(
+        Evaluation(
+            evaluator_id="e1",
+            evaluatee_id=gb_user.user_id,
+            task_id="t1",
+            ratings={
+                "delivery": 5.0,
+                "quality": 5.0,
+                "service": 5.0,
+                "cost_performance": 5.0,
+            },
+        )
+    )
     gb_task = _make_task("group_buying")
     assert server.rule_engine.check_access(gb_user, gb_task) is True
 

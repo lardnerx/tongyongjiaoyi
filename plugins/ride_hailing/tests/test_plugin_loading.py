@@ -45,6 +45,7 @@ class TestPluginLoading:
         # 准入规则在 _apply_manifest 中通过 ExpressionAccessRule 添加
         # 验证：无 driver_license 的用户应被拒绝
         from umcp_core.core import DomainTag, StandardTask, User
+        from umcp_core.layers.l5 import Evaluation
 
         class _Task(StandardTask):
             def task_type(self) -> str:
@@ -63,6 +64,20 @@ class TestPluginLoading:
         user_ok = _User(
             name="bob",
             metadata={"credentials": ["driver_license"], "trust_score": 4.5},
+        )
+        # 记录评价使 trustScore 通过 trust engine 路由达标（>= 4.0）
+        server_with_plugin.trust_engine.record_evaluation(
+            Evaluation(
+                evaluator_id="e1",
+                evaluatee_id=user_ok.user_id,
+                task_id="t1",
+                ratings={
+                    "punctuality": 5.0,
+                    "cleanliness": 5.0,
+                    "driving_smoothness": 5.0,
+                    "communication": 5.0,
+                },
+            )
         )
         assert server_with_plugin.rule_engine.check_access(user_ok, task)
 

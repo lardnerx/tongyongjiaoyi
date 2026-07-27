@@ -26,7 +26,7 @@ from umcp_core.layers.l1 import AuthProvider, PhoneAuthProvider
 from umcp_core.layers.l2 import DefaultTaskFactory, ResourceRegistry
 from umcp_core.layers.l3 import MatchStrategy
 from umcp_core.layers.l4 import PaymentSchema
-from umcp_core.layers.l5 import TrustEngine
+from umcp_core.layers.l5 import MeanTrustAggregator, TrustAggregator, TrustEngine
 from umcp_core.layers.l6 import IntelligenceModule, NoopIntelligenceModule
 from umcp_core.layers.l7 import RuleEngine
 from umcp_core.repositories.in_memory import (
@@ -96,6 +96,9 @@ class UMCPServer:
         self._match_strategies: dict[str, MatchStrategy] = {}
         self._payment_schemas: dict[str, PaymentSchema] = {}
         self._trust_engines: dict[str, TrustEngine] = {}
+
+        # 跨 domain 信任聚合器（默认算术平均）
+        self._trust_aggregator: TrustAggregator = MeanTrustAggregator()
 
         # 已加载插件
         self._plugins: list[PluginDescriptor] = []
@@ -176,9 +179,18 @@ class UMCPServer:
         self.payment_schema = schema
 
     def register_trust_engine(self, domain: str, engine: TrustEngine) -> None:
-        """按 domain 注册信任引擎，同时更新单值属性作为兜底。"""
-        self._trust_engines[domain.lower()] = engine
+        """按 domain 注册信任引擎。
+
+        同时：
+        - 更新单值属性 self.trust_engine（兜底）
+        - 注册到 self._trust_engines[domain]
+        - 同步到 self.rule_engine（供 RuleContext.trust_score 路由）
+        """
+        key = domain.lower()
+        self._trust_engines[key] = engine
         self.trust_engine = engine
+        # 同步到 RuleEngine，使 access_rule 的 trustScore 能按 domain 路由
+        self.rule_engine.register_trust_engine(key, engine)
 
     def match_strategy_for(self, domain: DomainTag | str) -> MatchStrategy | None:
         """按 domain 查询匹配策略，未命中时回退到单值属性。"""
@@ -194,6 +206,18 @@ class UMCPServer:
         """按 domain 查询信任引擎，未命中时回退到单值属性。"""
         key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._trust_engines.get(key, self.trust_engine)
+
+    def set_trust_aggregator(self, aggregator: TrustAggregator) -> None:
+        """注入自定义信任聚合策略（默认 MeanTrustAggregator）。"""
+        self._trust_aggregator = aggregator
+
+    def aggregate_trust_score(self, user_id: str) -> float:
+        """跨 domain 聚合 trust_score。
+
+        返回所有已注册 domain 的 TrustEngine.evaluate(user_id).overall_score
+        的聚合结果（默认算术平均，可通过 set_trust_aggregator 自定义）。
+        """
+        return self._trust_aggregator.aggregate(user_id, self._trust_engines)
 
     # ------------------------------------------------------------------
     # 任务工厂注册

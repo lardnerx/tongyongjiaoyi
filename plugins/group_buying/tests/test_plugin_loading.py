@@ -80,6 +80,7 @@ def test_access_rule_includes_business_license():
     """
     from umcp_core.core import DomainTag, User
     from umcp_core.core.task import CustomTask
+    from umcp_core.layers.l5 import Evaluation
 
     server = _load_plugin()
 
@@ -107,5 +108,19 @@ def test_access_rule_includes_business_license():
     user_ok = _User(
         name="carol",
         metadata={"credentials": ["business_license"], "trust_score": 5.0},
+    )
+    # 记录评价使 trustScore 通过 trust engine 路由达标（>= 3.0）
+    server.trust_engine.record_evaluation(
+        Evaluation(
+            evaluator_id="e1",
+            evaluatee_id=user_ok.user_id,
+            task_id="t1",
+            ratings={
+                "delivery": 5.0,
+                "quality": 5.0,
+                "service": 5.0,
+                "cost_performance": 5.0,
+            },
+        )
     )
     assert server.rule_engine.check_access(user_ok, task)

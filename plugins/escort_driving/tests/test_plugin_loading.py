@@ -44,6 +44,7 @@ class TestEscortPluginLoading:
     def test_access_rule_injected(self, server_with_plugin: UMCPServer):
         """准入规则应包含 coach_license 要求。"""
         from umcp_core.core import DomainTag, StandardTask, User
+        from umcp_core.layers.l5 import Evaluation
 
         class _Task(StandardTask):
             def task_type(self) -> str:
@@ -62,6 +63,19 @@ class TestEscortPluginLoading:
         user_ok = _User(
             name="bob",
             metadata={"credentials": ["coach_license"], "trust_score": 4.5},
+        )
+        # 记录评价使 trustScore 通过 trust engine 路由达标（>= 4.0）
+        server_with_plugin.trust_engine.record_evaluation(
+            Evaluation(
+                evaluator_id="e1",
+                evaluatee_id=user_ok.user_id,
+                task_id="t1",
+                ratings={
+                    "teaching_ability": 5.0,
+                    "patience": 5.0,
+                    "safety_record": 5.0,
+                },
+            )
         )
         assert server_with_plugin.rule_engine.check_access(user_ok, task)
 

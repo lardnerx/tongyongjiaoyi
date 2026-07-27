@@ -14,6 +14,7 @@ from umcp_core.layers.l5 import (
 )
 from umcp_core.layers.l5.trust import Evaluation
 from umcp_core.layers.l7 import ExpressionAccessRule, RuleContext, RuleEngine
+from umcp_core.server import UMCPServer
 
 
 def test_mean_trust_aggregator_empty_engines():
@@ -275,3 +276,91 @@ def test_check_access_injects_lookup_only_once():
     # 再次调用不应覆盖
     engine.check_access(user, task)
     assert rule._trust_engine_lookup is first_lookup
+
+
+# ============================================================================
+# UMCPServer 持有 TrustAggregator，register_trust_engine 同步到 RuleEngine
+# ============================================================================
+
+
+def test_server_holds_default_trust_aggregator():
+    """UMCPServer 默认持有 MeanTrustAggregator 实例。"""
+    server = UMCPServer()
+    assert isinstance(server._trust_aggregator, MeanTrustAggregator)
+
+
+def test_server_set_trust_aggregator_injectable():
+    """set_trust_aggregator 可注入自定义实现。"""
+    server = UMCPServer()
+
+    class MinTrustAggregator(TrustAggregator):
+        """取最低分聚合策略（自定义实现，用于测试）。"""
+        def aggregate(self, user_id, engines):
+            if not engines:
+                return 0.0
+            return min(e.evaluate(user_id).overall_score for e in engines.values())
+
+    custom = MinTrustAggregator()
+    server.set_trust_aggregator(custom)
+    assert server._trust_aggregator is custom
+
+
+def test_server_register_trust_engine_syncs_to_rule_engine():
+    """register_trust_engine 同步注册到 RuleEngine._domain_trust_engines。"""
+    server = UMCPServer()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+
+    server.register_trust_engine("ride", ride_te)
+
+    # 同步到 RuleEngine
+    assert server.rule_engine._domain_trust_engines["ride"] is ride_te
+
+
+def test_server_aggregate_trust_score():
+    """server.aggregate_trust_score 跨 domain 聚合。"""
+    server = UMCPServer()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+    ride_te.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    gb_te = WeightedSumTrustEngine(dimensions=["overall"])
+    gb_te.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 3.0})
+    )
+
+    server.register_trust_engine("ride", ride_te)
+    server.register_trust_engine("group_buying", gb_te)
+
+    # 算术平均 (5.0 + 3.0) / 2 = 4.0
+    assert server.aggregate_trust_score("u1") == 4.0
+
+
+def test_server_aggregate_with_custom_aggregator():
+    """注入自定义聚合器（取最低分），server.aggregate_trust_score 使用它。"""
+    server = UMCPServer()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+    ride_te.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    gb_te = WeightedSumTrustEngine(dimensions=["overall"])
+    gb_te.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 3.0})
+    )
+    server.register_trust_engine("ride", ride_te)
+    server.register_trust_engine("group_buying", gb_te)
+
+    class MinTrustAggregator(TrustAggregator):
+        def aggregate(self, user_id, engines):
+            if not engines:
+                return 0.0
+            return min(e.evaluate(user_id).overall_score for e in engines.values())
+
+    server.set_trust_aggregator(MinTrustAggregator())
+    # 取最低分 min(5.0, 3.0) = 3.0
+    assert server.aggregate_trust_score("u1") == 3.0
+
+
+def test_server_aggregate_trust_score_empty():
+    """未注册任何 engine 时，aggregate_trust_score 返回 0.0。"""
+    server = UMCPServer()
+    assert server.aggregate_trust_score("u1") == 0.0
