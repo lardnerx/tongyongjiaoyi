@@ -155,15 +155,27 @@ class RuleEngine:
 
     L7 是协议栈的"大脑皮层"和"宪法"，与其他所有层交叉，
     将各阶段积累的隐性治理规则抽象为可配置、可审计的元规则。
+
+    支持按 domain 隔离 access_rules：domain-scoped 规则只对对应 domain 的 task 生效，
+    全局规则（无 domain）对所有 task 生效。
     """
 
     def __init__(self) -> None:
-        self._access_rules: list[AccessRule] = []
+        self._access_rules: list[AccessRule] = []  # 全局兜底
+        self._domain_access_rules: dict[str, list[AccessRule]] = {}  # 按 domain
         self._arbitration_policy: ArbitrationPolicy = SimpleArbitrationPolicy()
         self._compliance: ComplianceModule = NoopComplianceModule()
 
-    def add_access_rule(self, rule: AccessRule) -> None:
-        self._access_rules.append(rule)
+    def add_access_rule(self, rule: AccessRule, domain: str | None = None) -> None:
+        """注册准入规则。
+
+        domain 为 None 时注册为全局规则（对所有 task 生效）；
+        否则只对该 domain 的 task 生效。
+        """
+        if domain is None:
+            self._access_rules.append(rule)
+        else:
+            self._domain_access_rules.setdefault(domain, []).append(rule)
 
     def set_arbitration_policy(self, policy: ArbitrationPolicy) -> None:
         self._arbitration_policy = policy
@@ -172,8 +184,13 @@ class RuleEngine:
         self._compliance = module
 
     def check_access(self, user: User, task: Task) -> bool:
-        """检查所有准入规则。任一不通过则拒绝。"""
-        return all(rule.check(user, task) for rule in self._access_rules)
+        """检查所有准入规则。任一不通过则拒绝。
+
+        优先校验 task.domain_tag 对应的 domain 规则，再校验全局规则。
+        """
+        domain = task.domain_tag.value
+        rules = self._domain_access_rules.get(domain, []) + self._access_rules
+        return all(rule.check(user, task) for rule in rules)
 
     def arbitrate(self, dispute: Dispute) -> ArbitrationResult:
         return self._arbitration_policy.arbitrate(dispute)
