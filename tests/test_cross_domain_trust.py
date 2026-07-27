@@ -137,3 +137,58 @@ def test_rule_context_falls_back_when_domain_not_registered():
         trust_engine_for_domain=lambda d: {"ride": WeightedSumTrustEngine()}.get(d),
     )
     assert ctx.trust_score == 4.5
+
+
+def test_expression_access_rule_check_routes_trust_score():
+    """ExpressionAccessRule.check 在绑定 lookup 后按 task.domain 路由 trust_score。"""
+    engine_ride = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_ride.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    engine_gb = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_gb.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 2.0})
+    )
+
+    rule = ExpressionAccessRule("trustScore >= 4.0")
+    rule.bind_trust_engine_lookup(
+        lambda d: {"ride": engine_ride, "group_buying": engine_gb}.get(d)
+    )
+
+    user = _make_user(trust_score=1.0)  # metadata 设为 1.0，验证不被读到
+    ride_task = _make_task("ride")
+    gb_task = _make_task("group_buying")
+
+    # ride 域 5.0 >= 4.0 通过
+    assert rule.check(user, ride_task) is True
+    # gb 域 2.0 < 4.0 拒绝
+    assert rule.check(user, gb_task) is False
+
+
+def test_bind_trust_engine_lookup_is_idempotent():
+    """bind_trust_engine_lookup 幂等：重复调用不会覆盖已绑定的 lookup。"""
+    engine_ride = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_ride.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    engine_gb = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_gb.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 2.0})
+    )
+
+    rule = ExpressionAccessRule("trustScore >= 4.0")
+    first_lookup = lambda d: {"ride": engine_ride}.get(d)
+    second_lookup = lambda d: {"group_buying": engine_gb}.get(d)
+
+    rule.bind_trust_engine_lookup(first_lookup)
+    # 再次绑定不应覆盖
+    rule.bind_trust_engine_lookup(second_lookup)
+
+    user = _make_user(trust_score=1.0)
+    ride_task = _make_task("ride")
+    gb_task = _make_task("group_buying")
+
+    # 应该用 first_lookup（ride 域有 5.0），ride task 通过
+    assert rule.check(user, ride_task) is True
+    # gb task 用 first_lookup 查不到 engine，回退到 metadata=1.0 < 4.0，拒绝
+    assert rule.check(user, gb_task) is False
