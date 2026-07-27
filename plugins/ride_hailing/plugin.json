@@ -1,6 +1,7 @@
 {
   "name": "ride-hailing",
   "version": "1.0.0",
+  "domain": "ride",
   "task_types": ["ride_hailing.tasks.RideTask"],
   "resource_types": ["ride_hailing.resources.DriverResource"],
   "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",

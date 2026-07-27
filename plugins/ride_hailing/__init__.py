@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 PLUGIN_MANIFEST = {
     "name": "ride-hailing",
     "version": "1.0.0",
+    "domain": "ride",
     "task_types": ["ride_hailing.tasks.RideTask"],
     "resource_types": ["ride_hailing.resources.DriverResource"],
     "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
@@ -29,33 +30,29 @@ PLUGIN_MANIFEST = {
 def register_plugin(server: "UMCPServer") -> None:
     """插件自定义初始化钩子。
 
-    在 _apply_manifest 之后调用，用于创建需要构造参数的组件：
-    - DynamicPricing（需 surge_factor 和 commission_rule）
-    - WeightedSumTrustEngine（需 dimensions）
-    - InstantMatch（需 scorer，覆盖 _apply_manifest 创建的无参实例）
+    按 domain 注册策略组件，同时更新单值属性作为兜底。
     """
+    domain = PLUGIN_MANIFEST["domain"]
     from umcp_core.layers.l3 import CredentialFilter, InstantMatch
     from umcp_core.layers.l4 import DynamicPricing, FlatCommissionRule
     from umcp_core.layers.l5 import WeightedSumTrustEngine
     from ride_hailing.scoring import RideMatchScorer
 
-    # 覆盖 match_strategy：注入按距离评分的 scorer 和资质过滤器
-    server.set_match_strategy(
+    server.register_match_strategy(
+        domain,
         InstantMatch(
             scorer=RideMatchScorer(),
             filters=[CredentialFilter(required_credentials=["driver_license"])],
-        )
+        ),
     )
-
-    # 注入支付模式：动态定价，20% 抽成
-    server.set_payment_schema(
+    server.register_payment_schema(
+        domain,
         DynamicPricing(
             surge_factor=1.0,
             commission_rule=FlatCommissionRule(rate=PLUGIN_MANIFEST["commission_rate"]),
-        )
+        ),
     )
-
-    # 注入信任引擎：4 维评价
-    server.set_trust_engine(
-        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"])
+    server.register_trust_engine(
+        domain,
+        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"]),
     )

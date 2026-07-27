@@ -1,6 +1,7 @@
 {
   "name": "escort-driving",
   "version": "1.0.0",
+  "domain": "escort",
   "task_types": ["escort_driving.tasks.EscortTask"],
   "resource_types": ["escort_driving.resources.CoachResource"],
   "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",

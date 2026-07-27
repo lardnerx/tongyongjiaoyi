@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 PLUGIN_MANIFEST = {
     "name": "group-buying",
     "version": "1.0.0",
+    "domain": "group_buying",
     "task_types": [
         "group_buying.tasks.BuyerTask",
         "group_buying.tasks.TenderTask",
@@ -33,33 +34,29 @@ PLUGIN_MANIFEST = {
 def register_plugin(server: "UMCPServer") -> None:
     """插件自定义初始化钩子。
 
-    在 _apply_manifest 之后调用，用于创建需要构造参数的组件：
-    - ReverseAuction（需 scorer，覆盖 _apply_manifest 创建的无参实例）
-    - InstallmentPayment（需 deposit_ratio 和 commission_rule）
-    - WeightedSumTrustEngine（需 dimensions）
+    按 domain 注册策略组件，同时更新单值属性作为兜底。
     """
+    domain = PLUGIN_MANIFEST["domain"]
     from umcp_core.layers.l3 import CredentialFilter, ReverseAuction
     from umcp_core.layers.l4 import FlatCommissionRule, InstallmentPayment
     from umcp_core.layers.l5 import WeightedSumTrustEngine
     from group_buying.scoring import TenderBidScorer
 
-    # 覆盖 match_strategy：注入集采行业评分器和资质过滤器
-    server.set_match_strategy(
+    server.register_match_strategy(
+        domain,
         ReverseAuction(
             scorer=TenderBidScorer(),
             filters=[CredentialFilter(required_credentials=["business_license"])],
-        )
+        ),
     )
-
-    # 注入支付模式：分期付款（30% 订金），5% 抽成
-    server.set_payment_schema(
+    server.register_payment_schema(
+        domain,
         InstallmentPayment(
             deposit_ratio=PLUGIN_MANIFEST["deposit_ratio"],
             commission_rule=FlatCommissionRule(rate=PLUGIN_MANIFEST["commission_rate"]),
-        )
+        ),
     )
-
-    # 注入信任引擎：4 维评价
-    server.set_trust_engine(
-        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"])
+    server.register_trust_engine(
+        domain,
+        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"]),
     )

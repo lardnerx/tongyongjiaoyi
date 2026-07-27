@@ -1,6 +1,7 @@
 {
   "name": "group-buying",
   "version": "1.0.0",
+  "domain": "group_buying",
   "task_types": [
     "group_buying.tasks.BuyerTask",
     "group_buying.tasks.TenderTask"

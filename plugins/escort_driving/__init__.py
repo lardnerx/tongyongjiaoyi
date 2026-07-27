@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 PLUGIN_MANIFEST = {
     "name": "escort-driving",
     "version": "1.0.0",
+    "domain": "escort",
     "task_types": ["escort_driving.tasks.EscortTask"],
     "resource_types": ["escort_driving.resources.CoachResource"],
     "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
@@ -30,33 +31,29 @@ PLUGIN_MANIFEST = {
 def register_plugin(server: "UMCPServer") -> None:
     """插件自定义初始化钩子。
 
-    在 _apply_manifest 之后调用，用于创建需要构造参数的组件：
-    - InstantMatch（需 scorer，覆盖 _apply_manifest 创建的无参实例）
-    - Hourly（复用核心库通用支付策略，需 hourly_rate 和 commission_rule）
-    - WeightedSumTrustEngine（需 dimensions）
+    按 domain 注册策略组件，同时更新单值属性作为兜底。
     """
+    domain = PLUGIN_MANIFEST["domain"]
     from umcp_core.layers.l3 import CredentialFilter, InstantMatch
     from umcp_core.layers.l4 import FlatCommissionRule, Hourly
     from umcp_core.layers.l5 import WeightedSumTrustEngine
     from escort_driving.scoring import EscortMatchScorer
 
-    # 覆盖 match_strategy：注入陪驾行业评分器和资质过滤器
-    server.set_match_strategy(
+    server.register_match_strategy(
+        domain,
         InstantMatch(
             scorer=EscortMatchScorer(),
             filters=[CredentialFilter(required_credentials=["coach_license"])],
-        )
+        ),
     )
-
-    # 注入支付模式：按时长计费，20% 抽成
-    server.set_payment_schema(
+    server.register_payment_schema(
+        domain,
         Hourly(
             hourly_rate=PLUGIN_MANIFEST["hourly_rate"],
             commission_rule=FlatCommissionRule(rate=PLUGIN_MANIFEST["commission_rate"]),
-        )
+        ),
     )
-
-    # 注入信任引擎：3 维评价
-    server.set_trust_engine(
-        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"])
+    server.register_trust_engine(
+        domain,
+        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"]),
     )

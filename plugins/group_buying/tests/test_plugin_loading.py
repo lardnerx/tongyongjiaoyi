@@ -73,11 +73,39 @@ def test_trust_engine_is_weighted_sum_with_4_dimensions():
 
 
 def test_access_rule_includes_business_license():
-    """准入规则包含 business_license。"""
+    """准入规则要求 business_license 且 trustScore >= 3.0。
+
+    通过 check_access 行为验证（避免直接访问私有属性 _access_rules，
+    因为 access_rule 现在按 domain 注册到 _domain_access_rules）。
+    """
+    from umcp_core.core import DomainTag, User
+    from umcp_core.core.task import CustomTask
+
     server = _load_plugin()
-    # rule_engine 应有至少 1 条 access_rule，且表达式包含 business_license
-    assert len(server.rule_engine._access_rules) >= 1
-    assert any(
-        "business_license" in rule.expression
-        for rule in server.rule_engine._access_rules
+
+    class _User(User):
+        def authenticate(self, credential) -> bool:
+            return True
+
+    task = CustomTask(demander_id="d1", domain_tag=DomainTag.of("group_buying"))
+
+    # 无 business_license：即使信用达标也应被拒绝
+    user_no_license = _User(
+        name="alice",
+        metadata={"credentials": [], "trust_score": 5.0},
     )
+    assert not server.rule_engine.check_access(user_no_license, task)
+
+    # 有 business_license 但信用不达标：应被拒绝
+    user_low_trust = _User(
+        name="bob",
+        metadata={"credentials": ["business_license"], "trust_score": 2.0},
+    )
+    assert not server.rule_engine.check_access(user_low_trust, task)
+
+    # 有 business_license 且信用达标：应通过
+    user_ok = _User(
+        name="carol",
+        metadata={"credentials": ["business_license"], "trust_score": 5.0},
+    )
+    assert server.rule_engine.check_access(user_ok, task)
