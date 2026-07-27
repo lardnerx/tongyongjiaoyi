@@ -1,8 +1,6 @@
 """集采行业报价评分器。"""
 from __future__ import annotations
 
-from typing import Any
-
 from umcp_core.core.resource import Resource
 from umcp_core.core.task import Task
 from umcp_core.layers.l3 import CompositeBidScorer
