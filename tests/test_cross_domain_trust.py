@@ -192,3 +192,86 @@ def test_bind_trust_engine_lookup_is_idempotent():
     assert rule.check(user, ride_task) is True
     # gb task 用 first_lookup 查不到 engine，回退到 metadata=1.0 < 4.0，拒绝
     assert rule.check(user, gb_task) is False
+
+
+# ============================================================================
+# RuleEngine 持有 domain→TrustEngine 映射并在 check_access 注入路由
+# ============================================================================
+
+
+def test_rule_engine_registers_trust_engine():
+    """RuleEngine.register_trust_engine 把 engine 加入 _domain_trust_engines。"""
+    engine = RuleEngine()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+
+    engine.register_trust_engine("ride", ride_te)
+
+    assert engine._domain_trust_engines["ride"] is ride_te
+
+
+def test_rule_engine_register_trust_engine_lowercases_domain():
+    """register_trust_engine 将 domain 统一小写化存储。"""
+    engine = RuleEngine()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+
+    engine.register_trust_engine("RIDE", ride_te)
+
+    # DomainTag.of('ride').value == 'ride'，查询时用小写
+    assert "ride" in engine._domain_trust_engines
+    assert "RIDE" not in engine._domain_trust_engines
+
+
+def test_expression_access_rule_uses_domain_score():
+    """ExpressionAccessRule 的 trustScore 按 task.domain 取值（通过 RuleEngine 注入）。"""
+    engine = RuleEngine()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+    ride_te.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    gb_te = WeightedSumTrustEngine(dimensions=["overall"])
+    gb_te.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 2.0})
+    )
+
+    engine.register_trust_engine("ride", ride_te)
+    engine.register_trust_engine("group_buying", gb_te)
+
+    # 注册按 domain 隔离的 access_rule：trustScore >= 3.0
+    engine.add_access_rule(
+        ExpressionAccessRule("trustScore >= 3.0"),
+        domain="ride",
+    )
+    engine.add_access_rule(
+        ExpressionAccessRule("trustScore >= 3.0"),
+        domain="group_buying",
+    )
+
+    user = _make_user(trust_score=1.0)  # metadata 设为 1.0，验证不被读到
+    ride_task = _make_task("ride")
+    gb_task = _make_task("group_buying")
+
+    # ride 域 5.0 >= 3.0 通过
+    assert engine.check_access(user, ride_task) is True
+    # gb 域 2.0 < 3.0 拒绝
+    assert engine.check_access(user, gb_task) is False
+
+
+def test_check_access_injects_lookup_only_once():
+    """check_access 注入 lookup 是幂等的（多次调用不覆盖）。"""
+    engine = RuleEngine()
+    ride_te = WeightedSumTrustEngine(dimensions=["overall"])
+    engine.register_trust_engine("ride", ride_te)
+
+    rule = ExpressionAccessRule("trustScore >= 0.0")
+    engine.add_access_rule(rule, domain="ride")
+
+    user = _make_user(trust_score=1.0)
+    task = _make_task("ride")
+
+    engine.check_access(user, task)
+    first_lookup = rule._trust_engine_lookup
+    assert first_lookup is not None
+
+    # 再次调用不应覆盖
+    engine.check_access(user, task)
+    assert rule._trust_engine_lookup is first_lookup

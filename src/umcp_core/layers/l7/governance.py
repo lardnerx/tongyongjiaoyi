@@ -195,6 +195,8 @@ class RuleEngine:
     def __init__(self) -> None:
         self._access_rules: list[AccessRule] = []  # 全局兜底
         self._domain_access_rules: dict[str, list[AccessRule]] = {}  # 按 domain
+        # domain → TrustEngine 映射，供 RuleContext.trust_score 路由
+        self._domain_trust_engines: dict[str, TrustEngine] = {}
         self._arbitration_policy: ArbitrationPolicy = SimpleArbitrationPolicy()
         self._compliance: ComplianceModule = NoopComplianceModule()
 
@@ -209,6 +211,13 @@ class RuleEngine:
         else:
             self._domain_access_rules.setdefault(domain, []).append(rule)
 
+    def register_trust_engine(self, domain: str, engine: TrustEngine) -> None:
+        """注册 domain 对应的 TrustEngine，供 RuleContext.trust_score 路由。
+
+        domain 统一小写化存储，与 DomainTag.of(...).value 保持一致。
+        """
+        self._domain_trust_engines[domain.lower()] = engine
+
     def set_arbitration_policy(self, policy: ArbitrationPolicy) -> None:
         self._arbitration_policy = policy
 
@@ -219,9 +228,17 @@ class RuleEngine:
         """检查所有准入规则。任一不通过则拒绝。
 
         优先校验 task.domain_tag 对应的 domain 规则，再校验全局规则。
+        同时向 ExpressionAccessRule 注入 domain→TrustEngine 路由能力
+        （幂等：仅当 rule 未绑定时注入），使 trustScore 按 task.domain 取值。
         """
         domain = task.domain_tag.value
         rules = self._domain_access_rules.get(domain, []) + self._access_rules
+        # 注入 domain→engine 路由能力到 ExpressionAccessRule（仅一次，幂等）
+        for rule in rules:
+            if isinstance(rule, ExpressionAccessRule) and rule._trust_engine_lookup is None:
+                rule.bind_trust_engine_lookup(
+                    lambda d: self._domain_trust_engines.get(d)
+                )
         return all(rule.check(user, task) for rule in rules)
 
     def arbitrate(self, dispute: Dispute) -> ArbitrationResult:
