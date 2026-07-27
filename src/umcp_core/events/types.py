@@ -17,6 +17,9 @@ class EventType(str, Enum):
     TASK_COMPLETED = "task.completed"
     TASK_CANCELLED = "task.cancelled"
 
+    # 招标（集采）
+    TENDER_PUBLISHED = "tender.published"
+
     # 匹配
     MATCH_PROPOSED = "match.proposed"
     MATCH_ACCEPTED = "match.accepted"
