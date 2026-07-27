@@ -165,3 +165,53 @@ class SkillBadge:
 RatingAggregator = SimpleRating
 CredibilityModel = CredibilityScore
 BadgeSystem = SkillBadge
+
+
+class TrustAggregator(ABC):
+    """跨 domain 信任聚合策略接口。
+
+    用于跨 domain 聚合同一用户的 trust_score。
+    默认实现为 MeanTrustAggregator（算术平均），行业应用可注入
+    自定义实现（如交易量加权平均、取最低分等）。
+    """
+
+    @abstractmethod
+    def aggregate(
+        self,
+        user_id: str,
+        engines: dict[str, TrustEngine],
+    ) -> float:
+        """跨 domain 聚合 trust_score。
+
+        Args:
+            user_id: 用户 ID
+            engines: domain → TrustEngine 映射（只含已注册的 domain）
+
+        Returns:
+            聚合后的 trust_score（0.0-5.0）
+        """
+
+
+class MeanTrustAggregator(TrustAggregator):
+    """算术平均聚合策略（默认实现）。
+
+    对每个 domain 的 TrustEngine.evaluate(user_id).overall_score
+    取算术平均。未注册任何 engine 时返回 0.0。
+
+    注意：未在某 engine 中留过评价记录的用户，evaluate() 会返回
+    overall_score=0.0 的空 profile，仍纳入平均（这通常是期望行为：
+    新用户从 0 分起步）。
+    """
+
+    def aggregate(
+        self,
+        user_id: str,
+        engines: dict[str, TrustEngine],
+    ) -> float:
+        if not engines:
+            return 0.0
+        scores = [
+            engines[domain].evaluate(user_id).overall_score
+            for domain in engines
+        ]
+        return sum(scores) / len(scores) if scores else 0.0
