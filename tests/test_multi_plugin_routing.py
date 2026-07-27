@@ -182,3 +182,62 @@ def test_apply_manifest_without_domain_falls_back_to_single_value():
     assert isinstance(server.match_strategy, InstantMatch)
     # 但 domain 表应为空，*_for 查不到
     assert server.match_strategy_for("any_domain") is server.match_strategy  # 回退到默认
+
+
+def test_register_normalizes_domain_to_lowercase():
+    """register_* 将 domain 小写化，与 DomainTag.of() 行为一致。"""
+    server = UMCPServer()
+    ride_strategy = InstantMatch()
+
+    # 用大写 domain 注册
+    server.register_match_strategy("Ride", ride_strategy)
+
+    # 用小写查询应能命中
+    assert server.match_strategy_for("ride") is ride_strategy
+    # 用 DomainTag 查询也应命中（DomainTag.of 已小写化）
+    assert server.match_strategy_for(DomainTag.of("RIDE")) is ride_strategy
+
+
+def test_apply_manifest_with_domain_list():
+    """_apply_manifest 支持 domain 为列表（跨域插件）。"""
+    server = UMCPServer()
+    manifest = {
+        "name": "cross-domain-plugin",
+        "version": "1.0.0",
+        "domain": ["ride", "escort"],
+        "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
+    }
+    from umcp_core.server import PluginDescriptor
+    from pathlib import Path
+    descriptor = PluginDescriptor(manifest, Path("."))
+    server._apply_manifest(descriptor)
+
+    # 两个 domain 都应能查到策略
+    assert isinstance(server.match_strategy_for("ride"), InstantMatch)
+    assert isinstance(server.match_strategy_for("escort"), InstantMatch)
+    # 且应是同一实例
+    assert server.match_strategy_for("ride") is server.match_strategy_for("escort")
+
+
+def test_payment_schema_for_with_domaintag_and_fallback():
+    """payment_schema_for 支持 DomainTag 入参和未命中回退。"""
+    server = UMCPServer()
+    ride_pay = DynamicPricing(surge_factor=1.0, commission_rule=FlatCommissionRule(rate=0.20))
+    server.register_payment_schema("ride", ride_pay)
+
+    # DomainTag 入参
+    assert server.payment_schema_for(DomainTag.of("ride")) is ride_pay
+    # 未命中回退到单值属性（register 后单值被设为 ride_pay）
+    assert server.payment_schema_for("unknown") is ride_pay
+
+
+def test_trust_engine_for_with_domaintag_and_fallback():
+    """trust_engine_for 支持 DomainTag 入参和未命中回退。"""
+    server = UMCPServer()
+    ride_engine = WeightedSumTrustEngine(dimensions=["punctuality"])
+    server.register_trust_engine("ride", ride_engine)
+
+    # DomainTag 入参
+    assert server.trust_engine_for(DomainTag.of("ride")) is ride_engine
+    # 未命中回退到单值属性
+    assert server.trust_engine_for("unknown") is ride_engine

@@ -167,32 +167,32 @@ class UMCPServer:
 
     def register_match_strategy(self, domain: str, strategy: MatchStrategy) -> None:
         """按 domain 注册匹配策略，同时更新单值属性作为兜底。"""
-        self._match_strategies[domain] = strategy
+        self._match_strategies[domain.lower()] = strategy
         self.match_strategy = strategy
 
     def register_payment_schema(self, domain: str, schema: PaymentSchema) -> None:
         """按 domain 注册支付模式，同时更新单值属性作为兜底。"""
-        self._payment_schemas[domain] = schema
+        self._payment_schemas[domain.lower()] = schema
         self.payment_schema = schema
 
     def register_trust_engine(self, domain: str, engine: TrustEngine) -> None:
         """按 domain 注册信任引擎，同时更新单值属性作为兜底。"""
-        self._trust_engines[domain] = engine
+        self._trust_engines[domain.lower()] = engine
         self.trust_engine = engine
 
     def match_strategy_for(self, domain: DomainTag | str) -> MatchStrategy | None:
         """按 domain 查询匹配策略，未命中时回退到单值属性。"""
-        key = domain.value if isinstance(domain, DomainTag) else domain
+        key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._match_strategies.get(key, self.match_strategy)
 
     def payment_schema_for(self, domain: DomainTag | str) -> PaymentSchema | None:
         """按 domain 查询支付模式，未命中时回退到单值属性。"""
-        key = domain.value if isinstance(domain, DomainTag) else domain
+        key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._payment_schemas.get(key, self.payment_schema)
 
     def trust_engine_for(self, domain: DomainTag | str) -> TrustEngine | None:
         """按 domain 查询信任引擎，未命中时回退到单值属性。"""
-        key = domain.value if isinstance(domain, DomainTag) else domain
+        key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._trust_engines.get(key, self.trust_engine)
 
     # ------------------------------------------------------------------
@@ -260,13 +260,14 @@ class UMCPServer:
         manifest = descriptor.manifest
 
         # 解析 domain（支持字符串或字符串列表，None 时退化为单值模式）
+        # 统一小写化以与 DomainTag.of() 和 task.domain_tag.value 保持一致
         domain_field = manifest.get("domain")
         if domain_field is None:
             domains: list[str] = []
         elif isinstance(domain_field, str):
-            domains = [domain_field]
+            domains = [domain_field.lower()]
         else:
-            domains = list(domain_field)
+            domains = [str(d).lower() for d in domain_field]
 
         # 注册任务类型
         for task_type_path in manifest.get("task_types", []):
