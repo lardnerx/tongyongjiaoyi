@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from umcp_core.core.base import User
+from umcp_core.core.domain import Credential, DomainTag
+from umcp_core.core.task import CustomTask
 from umcp_core.layers.l5 import (
     MeanTrustAggregator,
     TrustAggregator,
@@ -10,6 +13,7 @@ from umcp_core.layers.l5 import (
     WeightedSumTrustEngine,
 )
 from umcp_core.layers.l5.trust import Evaluation
+from umcp_core.layers.l7 import ExpressionAccessRule, RuleContext, RuleEngine
 
 
 def test_mean_trust_aggregator_empty_engines():
@@ -56,3 +60,80 @@ def test_trust_aggregator_is_abstract():
     """TrustAggregator 是抽象基类，不能直接实例化。"""
     with pytest.raises(TypeError):
         TrustAggregator()  # type: ignore[abstract]
+
+
+# ============================================================================
+# RuleContext 按 task.domain 路由 trust_score
+# ============================================================================
+
+
+class _ConcreteUser(User):
+    """User 是 ABC，测试中需要具体子类。"""
+
+    def authenticate(self, credential: Credential) -> bool:  # type: ignore[override]
+        return True
+
+
+def _make_user(credentials=None, trust_score=5.0):
+    user = _ConcreteUser(user_id="u1", name="alice")
+    user.metadata["credentials"] = credentials or []
+    user.metadata["trust_score"] = trust_score
+    return user
+
+
+def _make_task(domain):
+    return CustomTask(demander_id="u1", domain_tag=DomainTag.of(domain))
+
+
+def test_rule_context_trust_score_routes_by_domain():
+    """RuleContext.trust_score 按 task.domain_tag 路由到对应 engine 的 overall_score。"""
+    engine_ride = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_ride.record_evaluation(
+        Evaluation(evaluator_id="e1", evaluatee_id="u1", task_id="t1", ratings={"overall": 5.0})
+    )
+    engine_gb = WeightedSumTrustEngine(dimensions=["overall"])
+    engine_gb.record_evaluation(
+        Evaluation(evaluator_id="e2", evaluatee_id="u1", task_id="t2", ratings={"overall": 3.0})
+    )
+
+    # user.metadata['trust_score'] 设为 1.0（不应该被读到）
+    user = _make_user(trust_score=1.0)
+    ride_task = _make_task("ride")
+    gb_task = _make_task("group_buying")
+
+    # 注入 domain→engine 路由
+    ctx_ride = RuleContext(
+        user=user,
+        task=ride_task,
+        trust_engine_for_domain=lambda d: {"ride": engine_ride, "group_buying": engine_gb}.get(d),
+    )
+    ctx_gb = RuleContext(
+        user=user,
+        task=gb_task,
+        trust_engine_for_domain=lambda d: {"ride": engine_ride, "group_buying": engine_gb}.get(d),
+    )
+
+    # 应该读到对应 domain 的 engine 分数，而非 metadata
+    assert ctx_ride.trust_score == 5.0
+    assert ctx_gb.trust_score == 3.0
+
+
+def test_rule_context_falls_back_to_metadata():
+    """未绑定 lookup 时回退到 user.metadata['trust_score']（向后兼容）。"""
+    user = _make_user(trust_score=4.2)
+    task = _make_task("ride")
+    ctx = RuleContext(user=user, task=task)  # 不传 trust_engine_for_domain
+    assert ctx.trust_score == 4.2
+
+
+def test_rule_context_falls_back_when_domain_not_registered():
+    """lookup 已注入但 task.domain 没有对应 engine 时，回退到 metadata。"""
+    user = _make_user(trust_score=4.5)
+    task = _make_task("unknown_domain")
+    # 只注册了 ride，task 是 unknown_domain
+    ctx = RuleContext(
+        user=user,
+        task=task,
+        trust_engine_for_domain=lambda d: {"ride": WeightedSumTrustEngine()}.get(d),
+    )
+    assert ctx.trust_score == 4.5

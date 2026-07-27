@@ -5,11 +5,12 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from umcp_core.core.base import User
 from umcp_core.core.deal import Deal
 from umcp_core.core.task import Task
+from umcp_core.layers.l5 import TrustEngine
 
 
 class AccessRule(ABC):
@@ -25,15 +26,32 @@ class ExpressionAccessRule(AccessRule):
 
     支持简化的表达式语法，例：
       hasCredential('driver_license') && trustScore >= 4.0
+
+    当由 RuleEngine.check_access 调用时，会通过 bind_trust_engine_lookup
+    注入 domain→TrustEngine 路由能力，使 trustScore 按 task.domain_tag
+    路由到对应 engine 取值。未绑定时 trustScore 读 user.metadata。
     """
 
     def __init__(self, expression: str) -> None:
         self.expression: str = expression
+        self._trust_engine_lookup: Callable[[str], TrustEngine | None] | None = None
+
+    def bind_trust_engine_lookup(
+        self, lookup: Callable[[str], TrustEngine | None]
+    ) -> None:
+        """由 RuleEngine 在 check_access 前注入 domain→engine 路由能力。
+
+        幂等：重复调用不会覆盖已绑定的 lookup。
+        """
+        if self._trust_engine_lookup is None:
+            self._trust_engine_lookup = lookup
 
     def check(self, user: User, task: Task) -> bool:
-        # 简化实现：解析常见模式
-        # 生产环境应替换为完整的规则引擎（如 durable-rules、python-rule-engine）
-        ctx = RuleContext(user, task)
+        ctx = RuleContext(
+            user=user,
+            task=task,
+            trust_engine_for_domain=self._trust_engine_lookup,
+        )
         return _evaluate_expression(self.expression, ctx)
 
 
@@ -109,6 +127,10 @@ class RuleContext:
 
     user: User
     task: Task
+    # 可选：domain → TrustEngine 路由回调
+    # 注入后，trust_score 会按 task.domain_tag 路由到对应 engine 取值；
+    # 未注入（None）时回退到 user.metadata['trust_score']（向后兼容）。
+    trust_engine_for_domain: Callable[[str], TrustEngine | None] | None = None
 
     def has_credential(self, name: str) -> bool:
         # 简化：检查用户 metadata 中的 credentials 列表
@@ -117,6 +139,16 @@ class RuleContext:
 
     @property
     def trust_score(self) -> float:
+        """按 task.domain_tag 路由到对应 TrustEngine 读取 trust_score。
+
+        - 若 trust_engine_for_domain 已注入且能查到 domain 对应的 engine：
+          返回 engine.evaluate(user_id).overall_score
+        - 否则回退到 user.metadata['trust_score']（向后兼容）
+        """
+        if self.trust_engine_for_domain is not None:
+            engine = self.trust_engine_for_domain(self.task.domain_tag.value)
+            if engine is not None:
+                return engine.evaluate(self.user.user_id).overall_score
         return float(self.user.metadata.get("trust_score", 0.0))
 
 
