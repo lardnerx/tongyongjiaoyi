@@ -211,7 +211,7 @@ class MeanTrustAggregator(TrustAggregator):
         if not engines:
             return 0.0
         scores = [
-            engines[domain].evaluate(user_id).overall_score
-            for domain in engines
+            engine.evaluate(user_id).overall_score
+            for engine in engines.values()
         ]
-        return sum(scores) / len(scores) if scores else 0.0
+        return sum(scores) / len(scores)

@@ -1,6 +1,8 @@
 """跨域身份与信用单元测试。"""
 from __future__ import annotations
 
+import pytest
+
 from umcp_core.layers.l5 import (
     MeanTrustAggregator,
     TrustAggregator,
@@ -52,6 +54,5 @@ def test_mean_trust_aggregator_user_not_in_engine():
 
 def test_trust_aggregator_is_abstract():
     """TrustAggregator 是抽象基类，不能直接实例化。"""
-    import pytest
     with pytest.raises(TypeError):
         TrustAggregator()  # type: ignore[abstract]
