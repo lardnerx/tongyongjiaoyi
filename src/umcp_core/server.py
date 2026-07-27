@@ -92,6 +92,11 @@ class UMCPServer:
         self.trust_repo: TrustRepository | None = None
         self.event_repo: EventRepository | None = None
 
+        # 按 domain 索引的策略注册表（多插件并存支持）
+        self._match_strategies: dict[str, MatchStrategy] = {}
+        self._payment_schemas: dict[str, PaymentSchema] = {}
+        self._trust_engines: dict[str, TrustEngine] = {}
+
         # 已加载插件
         self._plugins: list[PluginDescriptor] = []
         self._started: bool = False
@@ -157,6 +162,40 @@ class UMCPServer:
         self.resource_registry = registry
 
     # ------------------------------------------------------------------
+    # 按 domain 注册的策略（多插件并存）
+    # ------------------------------------------------------------------
+
+    def register_match_strategy(self, domain: str, strategy: MatchStrategy) -> None:
+        """按 domain 注册匹配策略，同时更新单值属性作为兜底。"""
+        self._match_strategies[domain] = strategy
+        self.match_strategy = strategy
+
+    def register_payment_schema(self, domain: str, schema: PaymentSchema) -> None:
+        """按 domain 注册支付模式，同时更新单值属性作为兜底。"""
+        self._payment_schemas[domain] = schema
+        self.payment_schema = schema
+
+    def register_trust_engine(self, domain: str, engine: TrustEngine) -> None:
+        """按 domain 注册信任引擎，同时更新单值属性作为兜底。"""
+        self._trust_engines[domain] = engine
+        self.trust_engine = engine
+
+    def match_strategy_for(self, domain: DomainTag | str) -> MatchStrategy | None:
+        """按 domain 查询匹配策略，未命中时回退到单值属性。"""
+        key = domain.value if isinstance(domain, DomainTag) else domain
+        return self._match_strategies.get(key, self.match_strategy)
+
+    def payment_schema_for(self, domain: DomainTag | str) -> PaymentSchema | None:
+        """按 domain 查询支付模式，未命中时回退到单值属性。"""
+        key = domain.value if isinstance(domain, DomainTag) else domain
+        return self._payment_schemas.get(key, self.payment_schema)
+
+    def trust_engine_for(self, domain: DomainTag | str) -> TrustEngine | None:
+        """按 domain 查询信任引擎，未命中时回退到单值属性。"""
+        key = domain.value if isinstance(domain, DomainTag) else domain
+        return self._trust_engines.get(key, self.trust_engine)
+
+    # ------------------------------------------------------------------
     # 任务工厂注册
     # ------------------------------------------------------------------
 
@@ -220,38 +259,55 @@ class UMCPServer:
         """根据 plugin.json 反射加载实现类并注入。"""
         manifest = descriptor.manifest
 
+        # 解析 domain（支持字符串或字符串列表，None 时退化为单值模式）
+        domain_field = manifest.get("domain")
+        if domain_field is None:
+            domains: list[str] = []
+        elif isinstance(domain_field, str):
+            domains = [domain_field]
+        else:
+            domains = list(domain_field)
+
         # 注册任务类型
         for task_type_path in manifest.get("task_types", []):
             cls = _import_class(task_type_path)
             type_name = getattr(cls, "_task_type_name", cls.__name__.lower())
             self.task_factory.register_builder(type_name, cls)
 
-        # 注册资源类型（仅记录，实例化由行业代码完成）
-        # for res_type_path in manifest.get("resource_types", []):
-        #     cls = _import_class(res_type_path)
-
         # 注入匹配策略
         if "match_strategy" in manifest:
             cls = _import_class(manifest["match_strategy"])
-            self.match_strategy = cls()
+            instance = cls()
+            self.match_strategy = instance
+            for d in domains:
+                self._match_strategies[d] = instance
 
         # 注入支付模式
         if "payment_schema" in manifest:
             cls = _import_class(manifest["payment_schema"])
-            self.payment_schema = cls()
+            instance = cls()
+            self.payment_schema = instance
+            for d in domains:
+                self._payment_schemas[d] = instance
 
         # 注入信任引擎
         if "trust_engine" in manifest:
             cls = _import_class(manifest["trust_engine"])
-            self.trust_engine = cls()
+            instance = cls()
+            self.trust_engine = instance
+            for d in domains:
+                self._trust_engines[d] = instance
 
-        # 配置准入规则
+        # 配置准入规则（按 domain 注册，无 domain 时全局生效）
         if "access_rule_expression" in manifest:
             from umcp_core.layers.l7 import ExpressionAccessRule
 
-            self.rule_engine.add_access_rule(
-                ExpressionAccessRule(manifest["access_rule_expression"])
-            )
+            rule = ExpressionAccessRule(manifest["access_rule_expression"])
+            if domains:
+                for d in domains:
+                    self.rule_engine.add_access_rule(rule, domain=d)
+            else:
+                self.rule_engine.add_access_rule(rule)
 
     # ------------------------------------------------------------------
     # 启动与停止
