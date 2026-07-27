@@ -315,13 +315,16 @@ class UMCPServer:
             for d in domains:
                 self._payment_schemas[d] = instance
 
-        # 注入信任引擎
+        # 注入信任引擎（通过 register_trust_engine 同步到 RuleEngine）
         if "trust_engine" in manifest:
             cls = _import_class(manifest["trust_engine"])
             instance = cls()
-            self.trust_engine = instance
-            for d in domains:
-                self._trust_engines[d] = instance
+            if domains:
+                for d in domains:
+                    self.register_trust_engine(d, instance)
+            else:
+                # 无 domain 时仅更新单值属性（保持原行为）
+                self.trust_engine = instance
 
         # 配置准入规则（按 domain 注册，无 domain 时全局生效）
         if "access_rule_expression" in manifest:

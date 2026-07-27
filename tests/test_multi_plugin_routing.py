@@ -162,6 +162,19 @@ def test_apply_manifest_registers_by_domain():
     # access_rule 也应注册到 test_domain
     gb_task = _make_task("test_domain")
     high_trust_user = _make_user(trust_score=5.0)
+    # _apply_manifest 后 trust_engine 已通过 register_trust_engine 同步到
+    # rule_engine，trustScore 走 engine.evaluate() 路径（新用户返回 0.0）。
+    # 通过 record_evaluation 预填充 profile 使分数达标。
+    from umcp_core.layers.l5 import Evaluation
+
+    server.trust_engine_for("test_domain").record_evaluation(
+        Evaluation(
+            evaluator_id="e1",
+            evaluatee_id=high_trust_user.user_id,
+            task_id="t1",
+            ratings={"overall": 5.0},  # WeightedSumTrustEngine 默认维度
+        )
+    )
     assert server.rule_engine.check_access(high_trust_user, gb_task) is True
 
 
