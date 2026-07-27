@@ -7,6 +7,7 @@ from umcp_core.layers.l4.transaction import (
     FlatCommissionRule,
     FullRefundPolicy,
     Hourly,
+    InstallmentPayment,
     Milestone,
     PaymentOrder,
     PaymentSchema,
@@ -28,4 +29,5 @@ __all__ = [
     "Prepaid",
     "Milestone",
     "Hourly",
+    "InstallmentPayment",
 ]

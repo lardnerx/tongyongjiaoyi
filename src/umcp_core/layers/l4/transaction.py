@@ -283,3 +283,95 @@ class Hourly(PaymentSchema):
 
     def refund(self, order: PaymentOrder) -> None:
         order.status = PaymentStatus.REFUNDED
+
+
+class InstallmentPayment(PaymentSchema):
+    """分期付款模式（预置）。
+
+    支持订金+尾款两期结算：
+    - calculate() 返回单个 PaymentOrder，total_amount = 全款
+    - deposit_ratio 控制订金比例（如 0.3 = 30% 订金）
+    - hold_deposit() 仅托管订金部分
+    - capture_deposit() 扣订金
+    - capture_balance() 扣尾款（履约完成后）
+
+    PaymentOrder.metadata 扩展：
+    - deposit_amount: 订金金额
+    - balance_amount: 尾款金额
+    - deposit_status: "none" / "held" / "captured"
+    - balance_status: "none" / "captured"
+
+    通用性：集采订金尾款、装修分期、外包里程碑付款都可复用。
+    """
+
+    def __init__(
+        self,
+        deposit_ratio: float = 0.3,
+        commission_rule: CommissionRule | None = None,
+    ) -> None:
+        if not 0.0 <= deposit_ratio <= 1.0:
+            raise ValueError(f"订金比例必须在 [0, 1] 区间，得到: {deposit_ratio}")
+        self.deposit_ratio: float = deposit_ratio
+        self.commission_rule: CommissionRule = commission_rule or FlatCommissionRule()
+
+    def calculate(self, task: Task, deal: Deal) -> PaymentOrder:
+        amount = deal.final_amount or float(task.custom_fields.get("total_price", 0.0))
+        commission = self.commission_rule.calculate(task, amount)
+        deposit_amount = round(amount * self.deposit_ratio, 2)
+        balance_amount = round(amount - deposit_amount, 2)
+        order = PaymentOrder(
+            order_id=f"po_{deal.deal_id}",
+            deal_id=deal.deal_id,
+            total_amount=amount,
+            commission=commission,
+            metadata={
+                "deposit_amount": deposit_amount,
+                "balance_amount": balance_amount,
+                "deposit_status": "none",
+                "balance_status": "none",
+            },
+        )
+        order.settle_split()
+        return order
+
+    def hold_deposit(self, order: PaymentOrder) -> None:
+        if order.metadata.get("deposit_status") != "none":
+            raise RuntimeError(f"订金状态 {order.metadata['deposit_status']} 不允许托管")
+        order.metadata["deposit_status"] = "held"
+        order.status = PaymentStatus.HELD
+
+    def capture_deposit(self, order: PaymentOrder) -> None:
+        if order.metadata.get("deposit_status") != "held":
+            raise RuntimeError("订金未托管，无法扣款")
+        order.metadata["deposit_status"] = "captured"
+        # 订单整体仍保持 HELD，等尾款结算后才 CAPTURED
+
+    def capture_balance(self, order: PaymentOrder) -> None:
+        if order.metadata.get("deposit_status") != "captured":
+            raise RuntimeError("订金未扣，无法扣尾款")
+        if order.metadata.get("balance_status") != "none":
+            raise RuntimeError(f"尾款状态 {order.metadata['balance_status']} 不允许扣款")
+        order.metadata["balance_status"] = "captured"
+        order.status = PaymentStatus.CAPTURED
+
+    # ------------------------------------------------------------------
+    # PaymentSchema 抽象方法实现（委托给分期方法）
+    # ------------------------------------------------------------------
+
+    def hold(self, order: PaymentOrder) -> None:
+        self.hold_deposit(order)
+
+    def capture(self, order: PaymentOrder) -> None:
+        if order.metadata.get("deposit_status") == "none":
+            self.hold_deposit(order)
+        if order.metadata.get("deposit_status") == "held":
+            self.capture_deposit(order)
+        if order.metadata.get("balance_status") == "none":
+            self.capture_balance(order)
+
+    def refund(self, order: PaymentOrder) -> None:
+        if order.status not in (PaymentStatus.HELD, PaymentStatus.CAPTURED):
+            raise RuntimeError(f"支付订单状态 {order.status} 不允许退款")
+        order.status = PaymentStatus.REFUNDED
+        order.metadata["deposit_status"] = "refunded"
+        order.metadata["balance_status"] = "refunded"
