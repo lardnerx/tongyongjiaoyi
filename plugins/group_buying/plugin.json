@@ -1,0 +1,14 @@
+{
+  "name": "group-buying",
+  "version": "1.0.0",
+  "task_types": [
+    "group_buying.tasks.BuyerTask",
+    "group_buying.tasks.TenderTask"
+  ],
+  "resource_types": ["group_buying.resources.SupplierResource"],
+  "match_strategy": "umcp_core.layers.l3.matching.ReverseAuction",
+  "trust_dimensions": ["delivery", "quality", "service", "cost_performance"],
+  "commission_rate": 0.05,
+  "deposit_ratio": 0.3,
+  "access_rule_expression": "hasCredential('business_license') && trustScore >= 3.0"
+}
