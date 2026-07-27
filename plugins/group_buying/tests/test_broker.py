@@ -128,12 +128,12 @@ def test_notify_buyers_publishes_event():
     tender = broker.try_aggregate("空调")
     assert tender is not None
 
-    # 通知买家
-    broker.notify_buyers(tender, event_type="tender_published")
+    # 通知买家（复用 TASK_PUBLISHED 事件）
+    broker.notify_buyers(tender, event_type="task.published")
 
     # 事件总线应有记录
     history = server.event_bus.history()
     assert len(history) > 0
-    # 最后一个事件应是 tender_published
+    # 最后一个事件应是 task.published
     last_event = history[-1]
-    assert last_event.type.value == "tender_published" or "tender" in str(last_event.type.value).lower()
+    assert last_event.type.value == "task.published"

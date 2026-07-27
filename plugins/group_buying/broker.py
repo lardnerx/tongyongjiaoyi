@@ -101,11 +101,11 @@ class BrokerAgent:
 
     def notify_buyers(self, tender: TenderTask, event_type: str) -> None:
         """通知所有参团买家招标进展。"""
-        # 复用 EventType 已有事件，或用 TENDER_PUBLISHED 作为招标通知的兜底
+        # 复用 EventType 已有事件，无法解析时用 TASK_PUBLISHED 作为招标通知的兜底
         try:
             evt_type = EventType(event_type)
         except ValueError:
-            evt_type = EventType.TENDER_PUBLISHED
+            evt_type = EventType.TASK_PUBLISHED
 
         event = Event(
             type=evt_type,
