@@ -159,21 +159,46 @@ class Bidding(MatchStrategy):
     用于非标准化任务。支持两种变体：
     - ReverseAuction：供给方出价，需求方选最低价或最优信誉
     - ProposalBid：供给方提交方案，需求方选标
+
+    当传入 scorer 时，execute() 会按 scorer 降序自动选最高分资源
+    （与 InstantMatch 行为一致）。无 scorer 时仅返回候选列表。
     """
 
     def __init__(
         self,
         mode: str = "reverse_auction",
         filters: list[PreMatchFilter] | None = None,
+        scorer: Any = None,
     ) -> None:
         if mode not in ("reverse_auction", "proposal_bid"):
             raise ValueError(f"未知招标模式: {mode}")
         self.mode: str = mode
         self.filters: list[PreMatchFilter] = filters or []
+        self.scorer = scorer  # callable(task, resource) -> float
 
     def execute(self, task: Task, candidates: list[Resource]) -> MatchResult:
         filtered = self.apply_filters(task, candidates, self.filters)
-        # 实际的报价收集与选标由上层业务流程驱动，此处仅返回候选
+        if not filtered:
+            # 无候选：返回空结果但保留 mode 元信息（与原行为一致）
+            return MatchResult(
+                task_id=task.task_id,
+                selected_resource_id=None,
+                candidates=[],
+                metadata={"mode": self.mode, "awaiting_proposals": True},
+            )
+
+        if self.scorer is not None:
+            # 有 scorer：按评分降序选最高分（与 InstantMatch 一致）
+            filtered.sort(key=lambda r: self.scorer(task, r), reverse=True)
+            selected = filtered[0]
+            return MatchResult(
+                task_id=task.task_id,
+                selected_resource_id=selected.resource_id,
+                candidates=[r.resource_id for r in filtered],
+                metadata={"mode": self.mode, "auto_selected": True},
+            )
+
+        # 无 scorer：返回候选，由上层业务流程选标
         return MatchResult(
             task_id=task.task_id,
             selected_resource_id=None,
@@ -183,10 +208,17 @@ class Bidding(MatchStrategy):
 
 
 class ReverseAuction(Bidding):
-    """逆向拍卖：供给方出价，需求方选最低价。"""
+    """逆向拍卖：供给方出价，需求方选最低价或最优综合评分。
 
-    def __init__(self, filters: list[PreMatchFilter] | None = None) -> None:
-        super().__init__(mode="reverse_auction", filters=filters)
+    传入 scorer 时自动选最高分；不传时仅返回候选。
+    """
+
+    def __init__(
+        self,
+        filters: list[PreMatchFilter] | None = None,
+        scorer: Any = None,
+    ) -> None:
+        super().__init__(mode="reverse_auction", filters=filters, scorer=scorer)
 
 
 class ProposalBid(Bidding):
@@ -235,4 +267,66 @@ class SkillMatchScorer:
             return 0.0
         intersection = set(required) & set(skills)
         return float(len(intersection))
+
+
+class CompositeBidScorer:
+    """通用多维度报价评分器（预置）。
+
+    基于 resource.metadata["bid"] 的价格、交期、信誉三维度加权评分。
+    价格越低分越高，交期越短分越高，信誉越高分越高。
+    与 ReverseAuction 的 scorer 配合实现高分优先。
+
+    归一化基准：从 task.custom_fields["bid_price_range"] 和
+    task.custom_fields["bid_delivery_range"] 读取 (min, max) 元组。
+    单 bid 场景（min == max）时价格分和交期分均为 1.0（中性满分）。
+
+    通用性：任何需要多维度报价评分的招标场景（集采、外包、咨询）都可复用。
+    """
+
+    def __init__(
+        self,
+        price_weight: float = 0.5,
+        delivery_weight: float = 0.3,
+        trust_weight: float = 0.2,
+    ) -> None:
+        self.price_weight: float = price_weight
+        self.delivery_weight: float = delivery_weight
+        self.trust_weight: float = trust_weight
+
+    def __call__(self, task: Task, resource: Resource) -> float:
+        bid = resource.metadata.get("bid")
+        if not bid:
+            return 0.0
+
+        price = float(bid.get("price", 0.0))
+        delivery_days = float(bid.get("delivery_days", 0.0))
+        trust_score = float(resource.metadata.get("trust_score", 0.0))
+
+        price_range = task.custom_fields.get("bid_price_range", (price, price))
+        delivery_range = task.custom_fields.get("bid_delivery_range", (delivery_days, delivery_days))
+
+        price_min, price_max = price_range
+        delivery_min, delivery_max = delivery_range
+
+        # 价格分：越低越高。max == min 时返回 1.0（无对比基准）
+        if price_max == price_min:
+            price_score = 1.0
+        else:
+            price_score = (price_max - price) / (price_max - price_min)
+
+        # 交期分：越短越高
+        if delivery_max == delivery_min:
+            delivery_score = 1.0
+        else:
+            delivery_score = (delivery_max - delivery_days) / (delivery_max - delivery_min)
+
+        # 信誉分：满分 5.0
+        trust_score_normalized = trust_score / 5.0
+
+        total = (
+            price_score * self.price_weight
+            + delivery_score * self.delivery_weight
+            + trust_score_normalized * self.trust_weight
+        )
+        return round(total, 6)
 

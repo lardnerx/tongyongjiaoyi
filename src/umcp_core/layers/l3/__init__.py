@@ -4,6 +4,7 @@ from umcp_core.layers.l3.matching import (
     AuctionMatch,  # NearestMatch/AuctionMatch 别名（与 CodeWiki 9.2 命名对照）
     Bidding,
     CapabilityFilter,
+    CompositeBidScorer,
     CredentialFilter,
     DirectPick,
     InstantMatch,
@@ -30,6 +31,7 @@ __all__ = [
     "TrustThresholdFilter",
     "CapabilityFilter",
     "SkillMatchScorer",
+    "CompositeBidScorer",
     "NearestMatch",
     "AuctionMatch",
 ]
