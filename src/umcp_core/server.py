@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,8 @@ from umcp_core.repositories.interfaces import (
     UserRepository,
 )
 from umcp_core.repositories.postgres.bundle import PostgresRepositoryBundle
+from umcp_core.repositories.postgres.converters import task_to_orm
+from umcp_core.repositories.postgres.models import CompositeDependencyModel
 
 
 class PluginDescriptor:
@@ -395,6 +398,9 @@ class UMCPServer:
         if composite.status != TaskStatus.DRAFT:
             raise RuntimeError(f"复合任务状态 {composite.status} 不允许执行")
 
+        # 0. 原子持久化父任务和子任务
+        self._persist_composite_atomic(composite)
+
         # 1. 绑定 EventBus（触发 subscribe 子任务事件）
         composite.bind_event_bus(self.event_bus)
 
@@ -473,6 +479,124 @@ class UMCPServer:
         self._subtask_executors[domain.lower()] = executor
 
     # ------------------------------------------------------------------
+    # 持久化与恢复
+    # ------------------------------------------------------------------
+
+    def _persist_composite_atomic(self, composite: CompositeTask) -> None:
+        """原子持久化复合任务及其子任务和依赖关系。"""
+        if not hasattr(self, "_postgres_bundle"):
+            # InMemory 路径，逐个 save
+            self.task_repo.save(composite)
+            for sub in composite.subtasks:
+                self.task_repo.save(sub)
+            return
+
+        with self._postgres_bundle.transaction() as session:
+            session.merge(task_to_orm(composite))
+            for sub in composite.subtasks:
+                session.merge(task_to_orm(sub))
+            # 持久化依赖关系
+            for sub_id, deps in composite.dependencies.items():
+                for dep_id in deps:
+                    session.merge(
+                        CompositeDependencyModel(
+                            composite_task_id=composite.task_id,
+                            subtask_id=sub_id,
+                            depends_on_id=dep_id,
+                        )
+                    )
+
+    def recover_composite_tasks(self) -> dict[str, int]:
+        """启动时智能恢复未终态的复合任务。
+
+        Returns:
+            统计 dict：{"recovered": N, "redispatched": M, "marked_timeout": K}
+        """
+        from umcp_core.core.composite_task import CompositeTask
+
+        stats = {"recovered": 0, "redispatched": 0, "marked_timeout": 0}
+
+        if self.task_repo is None:
+            return stats
+
+        # 1. 查询所有未终态的 CompositeTask
+        non_terminal_statuses = [
+            TaskStatus.DRAFT, TaskStatus.MATCHING,
+            TaskStatus.PUBLISHED, TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS,
+        ]
+        composites: list[CompositeTask] = []
+        for status in non_terminal_statuses:
+            tasks = self.task_repo.find_by_status(status)
+            composites.extend(
+                t for t in tasks if t.task_type() == "composite"
+            )
+
+        for composite in composites:
+            stats["recovered"] += 1
+            self._recover_single_composite(composite, stats)
+
+        return stats
+
+    def _recover_single_composite(
+        self, composite: CompositeTask, stats: dict[str, int]
+    ) -> None:
+        """恢复单个复合任务。"""
+        # 重新绑定 EventBus
+        composite.bind_event_bus(self.event_bus)
+
+        # 重新注册 TASK_COMPLETED → SUBTASK_* 桥接（与 execute_composite 中的逻辑一致）
+        subtask_ids = {s.task_id for s in composite.subtasks}
+
+        def _bridge_to_subtask_event(event: Event) -> None:
+            task_id = event.payload.get("task_id")
+            if task_id not in subtask_ids:
+                return
+            subtask = composite._find_sub(task_id)
+            if subtask is None:
+                return
+            if event.payload.get("cancelled"):
+                composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
+            else:
+                composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
+            self._dispatch_ready_subtasks(composite)
+            if TaskStatus.is_terminal(composite.status):
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+
+        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+
+        # 遍历子任务，按状态分类处理
+        for subtask in composite.subtasks:
+            if TaskStatus.is_terminal(subtask.status):
+                continue
+
+            if subtask.status == TaskStatus.DRAFT:
+                subtask.bind_event_bus(self.event_bus)
+                self._execute_subtask_by_domain(subtask)
+                stats["redispatched"] += 1
+            elif subtask.status in (TaskStatus.MATCHING, TaskStatus.PUBLISHED):
+                subtask.bind_event_bus(self.event_bus)
+                self._execute_subtask_by_domain(subtask)
+                stats["redispatched"] += 1
+            elif subtask.status in (TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS):
+                # 标记待超时（阶段五 D 实现真正的超时取消）
+                subtask.custom_fields["_pending_timeout"] = datetime.utcnow().isoformat()
+                self.task_repo.save(subtask)
+                stats["marked_timeout"] += 1
+
+        # 检查是否所有子任务已终态
+        if all(TaskStatus.is_terminal(s.status) for s in composite.subtasks):
+            if any(s.status == TaskStatus.CANCELLED for s in composite.subtasks):
+                # 有 CANCELLED → 父任务失败
+                composite.status = TaskStatus.CANCELLED
+                composite.updated_at = datetime.utcnow()
+            else:
+                # 全部 COMPLETED → 父任务完成
+                composite.status = TaskStatus.COMPLETED
+                composite.updated_at = datetime.utcnow()
+            self.task_repo.save(composite)
+
+    # ------------------------------------------------------------------
     # 启动与停止
     # ------------------------------------------------------------------
 
@@ -482,6 +606,17 @@ class UMCPServer:
             print("[UMCPServer] 已在运行中", file=sys.stderr)
             return
         self._validate_required_components()
+
+        # 持久化恢复：启动时扫描未终态复合任务
+        if self.task_repo is not None:
+            stats = self.recover_composite_tasks()
+            if stats["recovered"] > 0:
+                print(
+                    f"[UMCPServer] 恢复 {stats['recovered']} 个复合任务"
+                    f"（重新派发 {stats['redispatched']}，标记待超时 {stats['marked_timeout']}）",
+                    file=sys.stderr,
+                )
+
         print(
             f"[UMCPServer] 协议栈已启动。已加载插件: "
             f"{[p.name for p in self._plugins] or '<无>'}"
