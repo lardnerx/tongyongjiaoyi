@@ -197,3 +197,152 @@ class TestDagQuery:
         )
         # b 是叶子节点
         assert composite.descendants("b") == []
+
+
+from umcp_core.events.bus import EventBus
+from umcp_core.events.types import EventType
+
+
+def _make_composite_with_bus(
+    subtasks: list,
+    dependencies: dict | None = None,
+) -> tuple[CompositeTask, EventBus]:
+    bus = EventBus()
+    composite = CompositeTask(
+        demander_id="user_001",
+        domain_tag=DomainTag.of("composite"),
+        subtasks=subtasks,
+        dependencies=dependencies or {},
+    )
+    composite.bind_event_bus(bus)
+    return composite, bus
+
+
+def _complete_subtask(task: StandardTask) -> None:
+    """推进子任务到终态 COMPLETED（需经过完整生命周期）。"""
+    task.publish()
+    task.assign_to("res_1")
+    task.start_execution()
+    task.complete()
+
+
+class TestEventDrivenStateTransition:
+    def test_on_subtask_completed_all_done(self):
+        sub_a = _make_subtask("a")
+        sub_b = _make_subtask("b")
+        composite, bus = _make_composite_with_bus([sub_a, sub_b])
+
+        # 模拟子任务完成 + 桥接事件
+        _complete_subtask(sub_a)
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_COMPLETED)
+        assert composite.status == TaskStatus.DRAFT  # 还有 b 未完成
+
+        _complete_subtask(sub_b)
+        composite.emit_subtask_event(sub_b, EventType.SUBTASK_COMPLETED)
+        assert composite.status == TaskStatus.COMPLETED
+
+        # 验证 COMPOSITE_COMPLETED 事件
+        composite_events = [
+            e for e in bus.history() if e.type == EventType.COMPOSITE_COMPLETED
+        ]
+        assert len(composite_events) == 1
+
+    def test_on_subtask_cancelled_propagates(self):
+        sub_a = _make_subtask("a")
+        sub_b = _make_subtask("b")
+        composite, bus = _make_composite_with_bus(
+            [sub_a, sub_b], dependencies={"b": ["a"]}
+        )
+
+        # a 取消 → 应传播到 b
+        sub_a.cancel()
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_CANCELLED)
+
+        assert sub_a.status == TaskStatus.CANCELLED
+        assert sub_b.status == TaskStatus.CANCELLED
+        assert composite.status == TaskStatus.CANCELLED
+
+    def test_on_subtask_cancelled_no_dep_siblings_continue(self):
+        sub_a = _make_subtask("a")
+        sub_b = _make_subtask("b")  # 与 a 无依赖
+        sub_c = _make_subtask("c")
+        composite, bus = _make_composite_with_bus(
+            [sub_a, sub_b, sub_c], dependencies={"c": ["a"]}
+        )
+
+        # a 取消 → c 应取消，b 不受影响
+        sub_a.cancel()
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_CANCELLED)
+
+        assert sub_a.status == TaskStatus.CANCELLED
+        assert sub_b.status == TaskStatus.DRAFT  # 无依赖兄弟不受影响
+        assert sub_c.status == TaskStatus.CANCELLED
+        assert composite.status == TaskStatus.CANCELLED
+
+    def test_fail_composite_when_any_cancelled(self):
+        sub_a = _make_subtask("a")
+        sub_b = _make_subtask("b")
+        composite, bus = _make_composite_with_bus([sub_a, sub_b])
+
+        _complete_subtask(sub_a)
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_COMPLETED)
+
+        sub_b.cancel()
+        composite.emit_subtask_event(sub_b, EventType.SUBTASK_CANCELLED)
+
+        assert composite.status == TaskStatus.CANCELLED
+        failed_events = [
+            e for e in bus.history() if e.type == EventType.COMPOSITE_FAILED
+        ]
+        assert len(failed_events) == 1
+
+    def test_idempotent_complete(self):
+        sub_a = _make_subtask("a")
+        composite, bus = _make_composite_with_bus([sub_a])
+
+        _complete_subtask(sub_a)
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_COMPLETED)
+        assert composite.status == TaskStatus.COMPLETED
+
+        # 重复触发不应报错
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_COMPLETED)
+        assert composite.status == TaskStatus.COMPLETED
+
+    def test_idempotent_fail(self):
+        sub_a = _make_subtask("a")
+        composite, bus = _make_composite_with_bus([sub_a])
+
+        sub_a.cancel()
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_CANCELLED)
+        assert composite.status == TaskStatus.CANCELLED
+
+        # 重复触发不应报错
+        composite.emit_subtask_event(sub_a, EventType.SUBTASK_CANCELLED)
+        assert composite.status == TaskStatus.CANCELLED
+
+    def test_event_filter_by_composite_task_id(self):
+        # 两个独立的 composite 共享同一 bus
+        sub_a1 = _make_subtask("a1")
+        sub_a2 = _make_subtask("a2")
+        bus = EventBus()
+
+        comp1 = CompositeTask(
+            demander_id="u1",
+            domain_tag=DomainTag.of("composite"),
+            subtasks=[sub_a1],
+        )
+        comp1.bind_event_bus(bus)
+
+        comp2 = CompositeTask(
+            demander_id="u2",
+            domain_tag=DomainTag.of("composite"),
+            subtasks=[sub_a2],
+        )
+        comp2.bind_event_bus(bus)
+
+        # 完成 a1，应只触发 comp1 完成，不影响 comp2
+        _complete_subtask(sub_a1)
+        comp1.emit_subtask_event(sub_a1, EventType.SUBTASK_COMPLETED)
+
+        assert comp1.status == TaskStatus.COMPLETED
+        assert comp2.status == TaskStatus.DRAFT  # a2 未完成
