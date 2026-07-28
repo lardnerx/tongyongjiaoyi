@@ -21,11 +21,19 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+postgres = [
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg[binary]>=3.1.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "mypy>=1.0",
     "ruff>=0.1",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg[binary]>=3.1.0",
 ]
 
 [tool.setuptools.packages.find]
