@@ -224,6 +224,7 @@ def user_to_orm(user: Any) -> UserModel:
         user_type=user.active_role.role_type if getattr(user, "active_role", None) else "unknown",
         roles=roles_data,
         metadata_=getattr(user, "metadata", {}),
+        # User 抽象基类没有 created_at/updated_at 字段，使用当前时间
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )

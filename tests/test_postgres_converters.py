@@ -215,3 +215,129 @@ class TestDependenciesConverter:
         restored = dependencies_from_orm(models)
         assert sorted(restored["b"]) == ["a"]
         assert sorted(restored["c"]) == ["a", "b"]
+
+
+from umcp_core.repositories.postgres.converters import (
+    resource_to_orm,
+    resource_from_orm,
+    user_to_orm,
+    user_from_orm,
+)
+from umcp_core.core.resource import Capability, Resource, ResourceStatus
+from umcp_core.core.base import User, Demander, PermissionSet
+
+
+class _TestResource(Resource):
+    """测试用 Resource 子类。"""
+
+    def resource_type(self) -> str:
+        return "test_resource"
+
+
+class _TestUser(User):
+    """测试用 User 子类。"""
+
+    def __init__(self, user_id: str, name: str, metadata: dict | None = None) -> None:
+        super().__init__(user_id=user_id, name=name, metadata=metadata)
+
+    def authenticate(self, credential) -> bool:
+        return True
+
+
+class _TestDemander(Demander):
+    @property
+    def permissions(self) -> PermissionSet:
+        return PermissionSet({"create_task"})
+
+
+class TestResourceConverter:
+    def test_resource_roundtrip(self):
+        """Resource to_orm → from_orm 应保留所有字段。"""
+        cap = Capability(
+            type="certification",
+            name="business_license",
+            verified=True,
+        )
+        resource = _TestResource(
+            supplier_id="sup-1",
+            domain_tag=DomainTag.of("ride_hailing"),
+            capabilities=[cap],
+            metadata={"location": "北京"},
+        )
+        resource.resource_id = "res-123"
+        resource.status = ResourceStatus.IDLE
+
+        model = resource_to_orm(resource)
+        assert model.resource_id == "res-123"
+        assert model.supplier_id == "sup-1"
+        assert model.domain_tag == "ride_hailing"
+        assert model.resource_type == "test_resource"
+        assert model.status == ResourceStatus.IDLE
+        assert len(model.capabilities) == 1
+        assert model.capabilities[0]["name"] == "business_license"
+        assert model.capabilities[0]["verified"] is True
+        assert model.metadata_ == {"location": "北京"}
+
+        restored = resource_from_orm(model)
+        assert restored.resource_id == "res-123"
+        assert restored.supplier_id == "sup-1"
+        assert restored.domain_tag.value == "ride_hailing"
+        assert restored.resource_type() == "test_resource"
+        assert restored.status == ResourceStatus.IDLE
+        assert len(restored.capabilities) == 1
+        assert restored.capabilities[0].name == "business_license"
+        assert restored.capabilities[0].verified is True
+        assert restored.metadata == {"location": "北京"}
+
+    def test_resource_with_expiry_capability(self):
+        """带过期的 Capability 应正确序列化/反序列化。"""
+        expiry = datetime(2026, 12, 31, 23, 59, 59)
+        cap = Capability(
+            type="certification",
+            name="driver_license",
+            verified=True,
+            expiry=expiry,
+        )
+        resource = _TestResource(
+            supplier_id="sup-1",
+            domain_tag=DomainTag.of("ride_hailing"),
+            capabilities=[cap],
+        )
+
+        model = resource_to_orm(resource)
+        restored = resource_from_orm(model)
+        assert len(restored.capabilities) == 1
+        assert restored.capabilities[0].expiry == expiry
+
+
+class TestUserConverter:
+    def test_user_roundtrip(self):
+        """User to_orm → from_orm 应保留所有字段。"""
+        user = _TestUser(user_id="u-1", name="张三")
+        user.add_role(_TestDemander())
+
+        model = user_to_orm(user)
+        assert model.user_id == "u-1"
+        assert model.name == "张三"
+        assert model.user_type == "demander"
+        assert "demander" in model.roles
+        assert "create_task" in model.roles["demander"]["permissions"]
+
+        restored = user_from_orm(model)
+        assert restored.user_id == "u-1"
+        assert restored.name == "张三"
+        assert "demander" in restored.roles
+        assert restored.active_role.role_type == "demander"
+
+    def test_user_without_roles(self):
+        """无角色的 User 应能正确转换。"""
+        user = _TestUser(user_id="u-2", name="李四")
+
+        model = user_to_orm(user)
+        assert model.user_id == "u-2"
+        assert model.user_type == "unknown"
+        assert model.roles == {}
+
+        restored = user_from_orm(model)
+        assert restored.user_id == "u-2"
+        assert restored.name == "李四"
