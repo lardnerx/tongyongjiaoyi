@@ -21,6 +21,7 @@ class Evaluation:
     ratings: dict[str, float] = field(default_factory=dict)  # 维度 -> 分数
     comment: str = ""
     created_at: datetime = field(default_factory=datetime.utcnow)
+    domain_tag: str = ""  # 用于 domain 隔离持久化
 
 
 @dataclass
@@ -34,6 +35,7 @@ class TrustProfile:
     dimension_scores: dict[str, float] = field(default_factory=dict)
     overall_score: float = 0.0
     last_updated: datetime = field(default_factory=datetime.utcnow)
+    domain_tag: str = ""  # 用于 domain 隔离持久化
 
     def update_dimension(self, dimension: str, score: float) -> None:
         self.dimension_scores[dimension] = score
