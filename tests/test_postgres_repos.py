@@ -346,3 +346,69 @@ class TestPostgresTrustRepository:
 
     def test_find_evaluations_empty(self, trust_repo):
         assert trust_repo.find_evaluations("nobody") == []
+
+
+from umcp_core.events.bus import Event
+from umcp_core.events.types import EventType
+
+
+@pytest.fixture
+def event_repo(pg_bundle):
+    return pg_bundle.event_repo
+
+
+class TestPostgresEventRepository:
+    def test_append_and_replay_all(self, event_repo):
+        e1 = Event(
+            type=EventType.TASK_PUBLISHED,
+            source_layer="L2",
+            payload={"task_id": "task-1"},
+        )
+        e2 = Event(
+            type=EventType.TASK_COMPLETED,
+            source_layer="L2",
+            payload={"task_id": "task-1"},
+        )
+        event_repo.append(e1)
+        event_repo.append(e2)
+
+        events = event_repo.replay()
+        assert len(events) >= 2
+        types = [e.type for e in events[-2:]]
+        assert EventType.TASK_PUBLISHED in types
+        assert EventType.TASK_COMPLETED in types
+
+    def test_replay_by_aggregate_id(self, event_repo):
+        e1 = Event(
+            type=EventType.TASK_PUBLISHED,
+            source_layer="L2",
+            payload={"task_id": "task-A"},
+        )
+        e2 = Event(
+            type=EventType.TASK_PUBLISHED,
+            source_layer="L2",
+            payload={"task_id": "task-B"},
+        )
+        event_repo.append(e1)
+        event_repo.append(e2)
+
+        events = event_repo.replay("task-A")
+        assert len(events) == 1
+        assert events[0].payload["task_id"] == "task-A"
+
+    def test_replay_empty(self, event_repo):
+        events = event_repo.replay()
+        assert events == []
+
+    def test_replay_preserves_payload(self, event_repo):
+        e = Event(
+            type=EventType.TASK_ASSIGNED,
+            source_layer="L2",
+            payload={"task_id": "t1", "resource_id": "r1", "extra": "data"},
+        )
+        event_repo.append(e)
+
+        events = event_repo.replay("t1")
+        assert len(events) == 1
+        assert events[0].payload["resource_id"] == "r1"
+        assert events[0].payload["extra"] == "data"
