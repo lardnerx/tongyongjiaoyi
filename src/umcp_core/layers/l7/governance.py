@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -152,31 +153,202 @@ class RuleContext:
         return float(self.user.metadata.get("trust_score", 0.0))
 
 
+class _CredentialsView:
+    """暴露给表达式求值器的凭证视图对象。
+
+    支持 `credentials.has(name)` 调用语法；私有属性 `_ctx`
+    会被 AST 求值器的私有属性访问禁令拦截。
+    """
+
+    def __init__(self, ctx: RuleContext) -> None:
+        self._ctx = ctx
+
+    def has(self, name: str) -> bool:
+        return self._ctx.has_credential(name)
+
+
+class _SafeExpressionEvaluator(ast.NodeVisitor):
+    """基于 AST 的白名单表达式求值器。
+
+    仅支持以下节点类型，其余一律拒绝：
+    - Expression / BoolOp / Compare / BinOp / UnaryOp
+    - Name / Constant / Call / Attribute
+
+    安全策略：
+    - Attribute：禁止访问 `_` 开头的属性
+    - Call：只允许对象方法调用（func 必须是 Attribute），禁止全局函数调用
+    - 任何未识别节点 → ValueError
+    """
+
+    _BINOP_MAP: dict[type, Any] = {
+        ast.Add: lambda a, b: a + b,
+        ast.Sub: lambda a, b: a - b,
+        ast.Mult: lambda a, b: a * b,
+        ast.Div: lambda a, b: a / b,
+        ast.Mod: lambda a, b: a % b,
+        ast.FloorDiv: lambda a, b: a // b,
+        ast.Pow: lambda a, b: a ** b,
+    }
+
+    _UNARYOP_MAP: dict[type, Any] = {
+        ast.UAdd: lambda a: +a,
+        ast.USub: lambda a: -a,
+        ast.Not: lambda a: not a,
+    }
+
+    _CMPOP_MAP: dict[type, Any] = {
+        ast.Eq: lambda a, b: a == b,
+        ast.NotEq: lambda a, b: a != b,
+        ast.Lt: lambda a, b: a < b,
+        ast.LtE: lambda a, b: a <= b,
+        ast.Gt: lambda a, b: a > b,
+        ast.GtE: lambda a, b: a >= b,
+    }
+
+    def __init__(self, context: dict[str, Any]) -> None:
+        self._context = context
+
+    def evaluate(self, expr: str) -> Any:
+        tree = ast.parse(expr, mode="eval")
+        return self.visit(tree.body)
+
+    def visit_Expression(self, node: ast.Expression) -> Any:
+        return self.visit(node.body)
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> Any:
+        if isinstance(node.op, ast.And):
+            result: Any = True
+            for value_node in node.values:
+                result = self.visit(value_node)
+                if not result:
+                    return result
+            return result
+        if isinstance(node.op, ast.Or):
+            result = False
+            for value_node in node.values:
+                result = self.visit(value_node)
+                if result:
+                    return result
+            return result
+        raise ValueError(
+            f"Unsupported bool op: {type(node.op).__name__}"
+        )
+
+    def visit_Compare(self, node: ast.Compare) -> Any:
+        left = self.visit(node.left)
+        for op, comparator in zip(node.ops, node.comparators):
+            op_func = self._CMPOP_MAP.get(type(op))
+            if op_func is None:
+                raise ValueError(
+                    f"Unsupported comparison op: {type(op).__name__}"
+                )
+            right = self.visit(comparator)
+            if not op_func(left, right):
+                return False
+            left = right
+        return True
+
+    def visit_BinOp(self, node: ast.BinOp) -> Any:
+        op_func = self._BINOP_MAP.get(type(node.op))
+        if op_func is None:
+            raise ValueError(
+                f"Unsupported binary op: {type(node.op).__name__}"
+            )
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        return op_func(left, right)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
+        op_func = self._UNARYOP_MAP.get(type(node.op))
+        if op_func is None:
+            raise ValueError(
+                f"Unsupported unary op: {type(node.op).__name__}"
+            )
+        operand = self.visit(node.operand)
+        return op_func(operand)
+
+    def visit_Name(self, node: ast.Name) -> Any:
+        if node.id not in self._context:
+            raise ValueError(f"Undefined variable: {node.id}")
+        return self._context[node.id]
+
+    def visit_Constant(self, node: ast.Constant) -> Any:
+        return node.value
+
+    def visit_Attribute(self, node: ast.Attribute) -> Any:
+        # 禁止访问下划线开头的私有属性
+        if node.attr.startswith("_"):
+            raise ValueError(
+                f"Access to private attribute forbidden: {node.attr}"
+            )
+        obj = self.visit(node.value)
+        return getattr(obj, node.attr)
+
+    def visit_Call(self, node: ast.Call) -> Any:
+        # 仅允许对象方法调用（func 必须是 ast.Attribute）
+        if not isinstance(node.func, ast.Attribute):
+            raise ValueError("Only method calls on objects are allowed")
+        if any(isinstance(a, ast.Starred) for a in node.args):
+            raise ValueError("Starred args not allowed")
+        if node.keywords:
+            raise ValueError("Keyword args not allowed")
+        # 取目标对象并校验方法名非私有
+        obj = self.visit(node.func.value)
+        method_name = node.func.attr
+        if method_name.startswith("_"):
+            raise ValueError(
+                f"Calling private method forbidden: {method_name}"
+            )
+        method = getattr(obj, method_name, None)
+        if method is None or not callable(method):
+            raise ValueError(f"Method not callable: {method_name}")
+        args = [self.visit(a) for a in node.args]
+        return method(*args)
+
+    def generic_visit(self, node: ast.AST) -> Any:
+        raise ValueError(
+            f"Unsupported expression node: {type(node).__name__}"
+        )
+
+
+def _safe_eval(expr: str, context: dict[str, Any]) -> Any:
+    """用 AST 白名单求值器安全求值表达式。
+
+    语法错误或不支持的节点会抛异常（由调用方捕获）。
+    """
+    evaluator = _SafeExpressionEvaluator(context)
+    return evaluator.evaluate(expr)
+
+
 def _evaluate_expression(expr: str, ctx: RuleContext) -> bool:
-    """简化的表达式求值器。
+    """简化的表达式求值器（AST 安全求值版）。
 
     支持：
-    - hasCredential('xxx')
-    - trustScore >= N / > N / <= N / < N / == N
-    - && / ||
+    - hasCredential('xxx')（向后兼容，regex 预处理为 True/False）
+    - credentials.has('xxx')（新语法，AST 方法调用）
+    - trustScore >= N / > N / <= N / < N / == N / != N
+    - && / ||（向后兼容，regex 替换为 and / or）
+    - and / or / not（Python 原生语法）
+    - + - * / 等二元运算、一元运算
     """
-    # 处理 hasCredential('xxx')
+    # 向后兼容：预处理 hasCredential('xxx') → True/False
     def _cred_repl(m: re.Match) -> str:
         cred_name = m.group(1)
         return "True" if ctx.has_credential(cred_name) else "False"
 
     expr = re.sub(r"hasCredential\(\s*['\"]([^'\"]+)['\"]\s*\)", _cred_repl, expr)
 
-    # 处理 trustScore
-    expr = re.sub(r"trustScore", str(ctx.trust_score), expr)
-
-    # 替换逻辑运算符为 Python 语法
+    # 向后兼容：&& / || → and / or
     expr = expr.replace("&&", " and ").replace("||", " or ")
 
+    # 构造 AST 求值上下文：trustScore 作为变量、credentials 作为对象
+    context: dict[str, Any] = {
+        "trustScore": ctx.trust_score,
+        "credentials": _CredentialsView(ctx),
+    }
+
     try:
-        # 安全的 eval：仅允许比较运算
-        allowed_names: dict[str, Any] = {}
-        result = eval(expr, {"__builtins__": {}}, allowed_names)  # noqa: S307
+        result = _safe_eval(expr, context)
         return bool(result)
     except Exception:
         return False
