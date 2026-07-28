@@ -1,6 +1,7 @@
 """core 包：核心抽象类。"""
 
 from umcp_core.core.base import Demander, PermissionSet, Role, Supplier, User
+from umcp_core.core.composite_task import CompositeTask
 from umcp_core.core.deal import Deal, DealStatus
 from umcp_core.core.domain import (
     Attachment,
@@ -22,6 +23,7 @@ __all__ = [
     "StandardTask",
     "CustomTask",
     "PackageTask",
+    "CompositeTask",
     "TaskStatus",
     "Resource",
     "Capability",
