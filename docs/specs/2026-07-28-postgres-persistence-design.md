@@ -849,8 +849,8 @@ def server_with_pg(pg_bundle):
 |------|------|
 | **测试** | 442 → ≥490 passed（新增 ≥48：转换器 12 + 仓储 30 + 恢复 6 + 端到端 5） |
 | **现有测试** | 零回归（442 passed 全部通过，InMemory 路径不受影响） |
-| **核心库改动** | `server.py` 新增 `use_postgres_repositories`/`recover_composite_tasks`/`dispose`；`repositories/` 新增 `postgres/` 子包；`core/`/`events/`/`layers/` 零修改 |
-| **接口扩展** | `repositories/interfaces.py` 的 `TrustRepository` 新增 `find_profile_by_domain(user_id, domain_tag)` 方法（InMemory 实现同步补充）；其余接口不变 |
+| **核心库改动** | `server.py` 新增 `use_postgres_repositories`/`recover_composite_tasks`/`dispose`；`repositories/` 新增 `postgres/` 子包；`layers/l5/trust.py` 给 TrustProfile 和 Evaluation 加 `domain_tag` 字段（向后兼容扩展，默认空字符串）；`core/`/`events/` 零修改 |
+| **接口扩展** | `repositories/interfaces.py` 的 `TrustRepository` 新增 `find_profile_by_domain(user_id, domain_tag)` 抽象方法；`repositories/in_memory.py` 的 InMemoryTrustRepository 同步实现（存储改为按 (user_id, domain_tag) 索引）；其余接口不变 |
 | **插件零修改** | `plugins/ride_hailing`/`plugins/group_buying` 不变 |
 | **InMemory 兼容** | `use_in_memory_repositories` 路径保持原行为，开发调试仍可用 |
 | **依赖** | 新增 `sqlalchemy>=2.0`、`alembic`、`psycopg[binary]` |
