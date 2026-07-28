@@ -412,3 +412,81 @@ class TestPostgresEventRepository:
         assert len(events) == 1
         assert events[0].payload["resource_id"] == "r1"
         assert events[0].payload["extra"] == "data"
+
+
+class TestPostgresRepositoryBundle:
+    def test_bundle_provides_all_repos(self, pg_bundle):
+        """Bundle 应提供 6 个仓储 + event_repo。"""
+        assert pg_bundle.task_repo is not None
+        assert pg_bundle.resource_repo is not None
+        assert pg_bundle.deal_repo is not None
+        assert pg_bundle.user_repo is not None
+        assert pg_bundle.trust_repo is not None
+        assert pg_bundle.event_repo is not None
+
+    def test_bundle_transaction_context(self, pg_bundle):
+        """transaction() 上下文应支持跨仓储原子操作。"""
+        from umcp_core.repositories.postgres.converters import task_to_orm
+
+        task = StandardTask(
+            demander_id="user-tx",
+            domain_tag=DomainTag.of("ride_hailing"),
+        )
+        with pg_bundle.transaction() as session:
+            session.merge(task_to_orm(task))
+
+        found = pg_bundle.task_repo.find_by_id(task.task_id)
+        assert found is not None
+        assert found.demander_id == "user-tx"
+
+    def test_bundle_transaction_rollback(self, pg_bundle):
+        """transaction() 抛异常时应回滚。"""
+        from umcp_core.repositories.postgres.converters import task_to_orm
+
+        task = StandardTask(
+            demander_id="user-rollback",
+            domain_tag=DomainTag.of("ride_hailing"),
+        )
+        with pytest.raises(ValueError):
+            with pg_bundle.transaction() as session:
+                session.merge(task_to_orm(task))
+                raise ValueError("模拟失败")
+
+        found = pg_bundle.task_repo.find_by_id(task.task_id)
+        assert found is None
+
+
+class TestUMCPServerPostgresIntegration:
+    def test_use_postgres_repositories(self, pg_bundle):
+        """server.use_postgres_repositories 应注入所有仓储。"""
+        from umcp_core.server import UMCPServer
+
+        server = UMCPServer()
+        # 直接注入预构建的 bundle（避免重复创建 engine）
+        server.task_repo = pg_bundle.task_repo
+        server.resource_repo = pg_bundle.resource_repo
+        server.deal_repo = pg_bundle.deal_repo
+        server.user_repo = pg_bundle.user_repo
+        server.trust_repo = pg_bundle.trust_repo
+        server.event_repo = pg_bundle.event_repo
+        server._postgres_bundle = pg_bundle
+        server.event_bus.subscribe_all(server.event_repo.append)
+
+        # 验证仓储可用
+        task = StandardTask(
+            demander_id="server-test",
+            domain_tag=DomainTag.of("ride_hailing"),
+        )
+        server.task_repo.save(task)
+        found = server.task_repo.find_by_id(task.task_id)
+        assert found is not None
+        assert found.demander_id == "server-test"
+
+    def test_dispose(self, pg_bundle):
+        """dispose 应释放连接池。"""
+        from umcp_core.server import UMCPServer
+
+        server = UMCPServer()
+        server._postgres_bundle = pg_bundle
+        server.dispose()
+        assert not hasattr(server, "_postgres_bundle")

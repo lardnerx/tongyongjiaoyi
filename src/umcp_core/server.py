@@ -47,6 +47,7 @@ from umcp_core.repositories.interfaces import (
     TrustRepository,
     UserRepository,
 )
+from umcp_core.repositories.postgres.bundle import PostgresRepositoryBundle
 
 
 class PluginDescriptor:
@@ -114,6 +115,35 @@ class UMCPServer:
     # ------------------------------------------------------------------
     # 仓储配置
     # ------------------------------------------------------------------
+
+    def use_postgres_repositories(
+        self, dsn: str, echo: bool = False
+    ) -> PostgresRepositoryBundle:
+        """使用 PostgreSQL 仓储（生产环境）。
+
+        Args:
+            dsn: PostgreSQL 连接字符串
+            echo: 是否打印 SQL（调试用）
+
+        Returns:
+            PostgresRepositoryBundle 实例，可用于 dispose 或直接访问仓储
+        """
+        bundle = PostgresRepositoryBundle(dsn, echo)
+        self.task_repo = bundle.task_repo
+        self.resource_repo = bundle.resource_repo
+        self.deal_repo = bundle.deal_repo
+        self.user_repo = bundle.user_repo
+        self.trust_repo = bundle.trust_repo
+        self.event_repo = bundle.event_repo
+        self.event_bus.subscribe_all(self.event_repo.append)
+        self._postgres_bundle = bundle
+        return bundle
+
+    def dispose(self) -> None:
+        """释放资源（关闭 DB 连接池）。"""
+        if hasattr(self, "_postgres_bundle"):
+            self._postgres_bundle.dispose()
+            delattr(self, "_postgres_bundle")
 
     def use_in_memory_repositories(self) -> InMemoryRepositoryBundle:
         """使用内存仓储（开发调试）。"""
