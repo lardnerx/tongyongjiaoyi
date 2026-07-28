@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from umcp_core.core.domain import DomainTag
-from umcp_core.core.task import Task
+from umcp_core.core.task import Task, TaskStatus
 from umcp_core.events.bus import EventBus, Event
 from umcp_core.events.types import EventType
 from umcp_core.layers.l1 import AuthProvider, PhoneAuthProvider
@@ -395,12 +395,17 @@ class UMCPServer:
         self._dispatch_ready_subtasks(composite)
 
     def _dispatch_ready_subtasks(self, composite: CompositeTask) -> None:
-        """派发就绪子任务到对应 domain 执行。
+        """派发就绪子任务到对应 domain执行。
 
         仅绑定 EventBus，publish 时机交给 _execute_subtask_by_domain
         或自定义执行器（避免双重 publish 与 DRAFT→MATCHING 后再 publish 的非法转移）。
+
+        注意：ready_subtasks() 返回的列表在迭代期间可能因 EventBus 同步 publish
+        触发的递归调用而被"污染"（子任务状态变更），需在派发前重新校验 DRAFT 状态。
         """
         for subtask in composite.ready_subtasks():
+            if subtask.status != TaskStatus.DRAFT:
+                continue  # 可能在递归派发中已被推进
             subtask.bind_event_bus(self.event_bus)
             self._execute_subtask_by_domain(subtask)
 
