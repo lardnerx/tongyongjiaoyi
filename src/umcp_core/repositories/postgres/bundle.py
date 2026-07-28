@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from umcp_core.repositories.postgres.models import Base
+from umcp_core.repositories.postgres.resource_repo import PostgresResourceRepository
 from umcp_core.repositories.postgres.task_repo import PostgresTaskRepository
 
 
@@ -34,7 +35,7 @@ class PostgresRepositoryBundle:
 
         # 仓储实例（逐步填充，本任务只填充 task_repo）
         self.task_repo = PostgresTaskRepository(self.SessionFactory)
-        self.resource_repo = None  # 任务 3 填充
+        self.resource_repo = PostgresResourceRepository(self.SessionFactory)
         self.deal_repo = None      # 任务 4 填充
         self.user_repo = None      # 任务 4 填充
         self.trust_repo = None     # 任务 5 填充

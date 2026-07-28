@@ -102,3 +102,77 @@ class TestPostgresTaskRepository:
     def test_update_status_nonexistent_raises(self, task_repo):
         with pytest.raises(KeyError):
             task_repo.update_status("nonexistent", "completed")
+
+
+from umcp_core.core.resource import Resource, ResourceStatus, Capability
+
+
+class _TestResource(Resource):
+    """测试用 Resource 子类。"""
+
+    def resource_type(self) -> str:
+        return "test_resource"
+
+
+@pytest.fixture
+def resource_repo(pg_bundle):
+    return pg_bundle.resource_repo
+
+
+class TestPostgresResourceRepository:
+    def test_save_and_find_by_id(self, resource_repo):
+        cap = Capability(type="certification", name="business_license", verified=True)
+        res = _TestResource(
+            supplier_id="sup-1",
+            domain_tag=DomainTag.of("ride_hailing"),
+            capabilities=[cap],
+            metadata={"location": "北京"},
+        )
+        resource_repo.save(res)
+
+        found = resource_repo.find_by_id(res.resource_id)
+        assert found is not None
+        assert found.supplier_id == "sup-1"
+        assert found.domain_tag.value == "ride_hailing"
+        assert len(found.capabilities) == 1
+        assert found.capabilities[0].name == "business_license"
+        assert found.capabilities[0].verified is True
+        assert found.metadata == {"location": "北京"}
+
+    def test_find_by_id_nonexistent(self, resource_repo):
+        assert resource_repo.find_by_id("nonexistent") is None
+
+    def test_find_by_supplier(self, resource_repo):
+        r1 = _TestResource(supplier_id="sup-A", domain_tag=DomainTag.of("ride_hailing"))
+        r2 = _TestResource(supplier_id="sup-B", domain_tag=DomainTag.of("ride_hailing"))
+        for r in [r1, r2]:
+            resource_repo.save(r)
+
+        results = resource_repo.find_by_supplier("sup-A")
+        assert len(results) == 1
+        assert results[0].supplier_id == "sup-A"
+
+    def test_find_available_by_domain(self, resource_repo):
+        r1 = _TestResource(supplier_id="sup-1", domain_tag=DomainTag.of("ride_hailing"))
+        r1.status = ResourceStatus.IDLE
+        r2 = _TestResource(supplier_id="sup-2", domain_tag=DomainTag.of("group_buying"))
+        r2.status = ResourceStatus.IDLE
+        for r in [r1, r2]:
+            resource_repo.save(r)
+
+        results = resource_repo.find_available(DomainTag.of("ride_hailing"))
+        assert len(results) == 1
+        assert results[0].domain_tag.value == "ride_hailing"
+
+    def test_update_status(self, resource_repo):
+        res = _TestResource(supplier_id="sup-1", domain_tag=DomainTag.of("ride_hailing"))
+        resource_repo.save(res)
+
+        resource_repo.update_status(res.resource_id, ResourceStatus.BUSY)
+
+        found = resource_repo.find_by_id(res.resource_id)
+        assert found.status == ResourceStatus.BUSY
+
+    def test_update_status_nonexistent_raises(self, resource_repo):
+        with pytest.raises(KeyError):
+            resource_repo.update_status("nonexistent", "idle")
