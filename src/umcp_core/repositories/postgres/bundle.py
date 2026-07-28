@@ -7,9 +7,11 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from umcp_core.repositories.postgres.deal_repo import PostgresDealRepository
 from umcp_core.repositories.postgres.models import Base
 from umcp_core.repositories.postgres.resource_repo import PostgresResourceRepository
 from umcp_core.repositories.postgres.task_repo import PostgresTaskRepository
+from umcp_core.repositories.postgres.user_repo import PostgresUserRepository
 
 
 class PostgresRepositoryBundle:
@@ -36,8 +38,8 @@ class PostgresRepositoryBundle:
         # 仓储实例（逐步填充，本任务只填充 task_repo）
         self.task_repo = PostgresTaskRepository(self.SessionFactory)
         self.resource_repo = PostgresResourceRepository(self.SessionFactory)
-        self.deal_repo = None      # 任务 4 填充
-        self.user_repo = None      # 任务 4 填充
+        self.deal_repo = PostgresDealRepository(self.SessionFactory)
+        self.user_repo = PostgresUserRepository(self.SessionFactory)
         self.trust_repo = None     # 任务 5 填充
         self.event_repo = None     # 任务 6 填充
 

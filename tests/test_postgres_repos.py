@@ -176,3 +176,93 @@ class TestPostgresResourceRepository:
     def test_update_status_nonexistent_raises(self, resource_repo):
         with pytest.raises(KeyError):
             resource_repo.update_status("nonexistent", "idle")
+
+
+from umcp_core.core.deal import Deal, DealStatus
+from umcp_core.core.base import User, Demander, PermissionSet, Supplier
+
+
+class _TestUser(User):
+    """测试用 User 子类。"""
+
+    def __init__(self, user_id, name, metadata=None):
+        super().__init__(user_id=user_id, name=name, metadata=metadata)
+
+    def authenticate(self, credential) -> bool:
+        return True
+
+
+class _TestDemander(Demander):
+    @property
+    def permissions(self) -> PermissionSet:
+        return PermissionSet({"create_task"})
+
+
+@pytest.fixture
+def deal_repo(pg_bundle):
+    return pg_bundle.deal_repo
+
+
+@pytest.fixture
+def user_repo(pg_bundle):
+    return pg_bundle.user_repo
+
+
+class TestPostgresDealRepository:
+    def test_save_and_find_by_id(self, deal_repo):
+        deal = Deal(
+            task_id="task-1",
+            resource_id="res-1",
+            demander_id="user-1",
+            supplier_id="sup-1",
+            final_amount=88.88,
+        )
+        deal_repo.save(deal)
+
+        found = deal_repo.find_by_id(deal.deal_id)
+        assert found is not None
+        assert found.task_id == "task-1"
+        assert found.final_amount == 88.88
+        assert found.status == DealStatus.PENDING
+
+    def test_find_by_task(self, deal_repo):
+        d1 = Deal(task_id="task-A", resource_id="r1", demander_id="u1", supplier_id="s1")
+        d2 = Deal(task_id="task-A", resource_id="r2", demander_id="u1", supplier_id="s2")
+        d3 = Deal(task_id="task-B", resource_id="r3", demander_id="u2", supplier_id="s3")
+        for d in [d1, d2, d3]:
+            deal_repo.save(d)
+
+        results = deal_repo.find_by_task("task-A")
+        assert len(results) == 2
+
+    def test_find_by_supplier(self, deal_repo):
+        d1 = Deal(task_id="t1", resource_id="r1", demander_id="u1", supplier_id="sup-A")
+        d2 = Deal(task_id="t2", resource_id="r2", demander_id="u2", supplier_id="sup-B")
+        for d in [d1, d2]:
+            deal_repo.save(d)
+
+        results = deal_repo.find_by_supplier("sup-A")
+        assert len(results) == 1
+
+
+class TestPostgresUserRepository:
+    def test_save_and_find_by_id(self, user_repo):
+        user = _TestUser(user_id="u-1", name="张三")
+        user.add_role(_TestDemander())
+        user_repo.save(user)
+
+        found = user_repo.find_by_id("u-1")
+        assert found is not None
+        assert found.name == "张三"
+        assert "demander" in found.roles
+
+    def test_find_by_name(self, user_repo):
+        user = _TestUser(user_id="u-1", name="李四")
+        user_repo.save(user)
+
+        found = user_repo.find_by_name("李四")
+        assert found is not None
+        assert found.user_id == "u-1"
+
+    def test_find_by_id_nonexistent(self, user_repo):
+        assert user_repo.find_by_id("nonexistent") is None
