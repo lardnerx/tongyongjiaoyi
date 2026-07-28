@@ -142,18 +142,30 @@ class InMemoryUserRepository(UserRepository):
 
 class InMemoryTrustRepository(TrustRepository):
     def __init__(self) -> None:
-        self._profiles: dict[str, TrustProfile] = {}
+        # 改为按 (user_id, domain_tag) 索引
+        self._profiles: dict[tuple[str, str], TrustProfile] = {}
         self._evaluations: dict[str, list[Evaluation]] = {}
         self._lock = threading.RLock()
 
     def save_profile(self, profile: TrustProfile) -> TrustProfile:
         with self._lock:
-            self._profiles[profile.user_id] = profile
+            key = (profile.user_id, profile.domain_tag)
+            self._profiles[key] = profile
             return profile
 
     def find_profile(self, user_id: str) -> TrustProfile | None:
+        """返回该用户的任意一个 domain 的 profile（向后兼容）。"""
         with self._lock:
-            return self._profiles.get(user_id)
+            for (uid, _domain), profile in self._profiles.items():
+                if uid == user_id:
+                    return profile
+            return None
+
+    def find_profile_by_domain(
+        self, user_id: str, domain_tag: str
+    ) -> TrustProfile | None:
+        with self._lock:
+            return self._profiles.get((user_id, domain_tag))
 
     def save_evaluation(self, evaluation: Evaluation) -> None:
         with self._lock:

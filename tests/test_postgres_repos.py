@@ -266,3 +266,83 @@ class TestPostgresUserRepository:
 
     def test_find_by_id_nonexistent(self, user_repo):
         assert user_repo.find_by_id("nonexistent") is None
+
+
+from umcp_core.layers.l5 import TrustProfile, Evaluation
+
+
+@pytest.fixture
+def trust_repo(pg_bundle):
+    return pg_bundle.trust_repo
+
+
+class TestPostgresTrustRepository:
+    def test_save_and_find_by_domain(self, trust_repo):
+        profile = TrustProfile(
+            user_id="user-1",
+            dimension_scores={"delivery": 0.9, "quality": 0.8},
+            overall_score=0.85,
+            domain_tag="ride_hailing",
+        )
+        trust_repo.save_profile(profile)
+
+        found = trust_repo.find_profile_by_domain("user-1", "ride_hailing")
+        assert found is not None
+        assert found.user_id == "user-1"
+        assert found.domain_tag == "ride_hailing"
+        assert found.overall_score == 0.85
+        assert found.dimension_scores == {"delivery": 0.9, "quality": 0.8}
+
+    def test_domain_isolation(self, trust_repo):
+        """同一用户不同 domain 的信任档案应隔离存储。"""
+        profile_ride = TrustProfile(
+            user_id="user-1",
+            overall_score=0.85,
+            domain_tag="ride_hailing",
+        )
+        profile_buy = TrustProfile(
+            user_id="user-1",
+            overall_score=0.60,
+            domain_tag="group_buying",
+        )
+        trust_repo.save_profile(profile_ride)
+        trust_repo.save_profile(profile_buy)
+
+        found_ride = trust_repo.find_profile_by_domain("user-1", "ride_hailing")
+        found_buy = trust_repo.find_profile_by_domain("user-1", "group_buying")
+        assert found_ride.overall_score == 0.85
+        assert found_buy.overall_score == 0.60
+
+    def test_find_by_domain_nonexistent(self, trust_repo):
+        assert trust_repo.find_profile_by_domain("nobody", "ride_hailing") is None
+
+    def test_find_profile_returns_any(self, trust_repo):
+        """find_profile 向后兼容：返回任意 domain 的 profile。"""
+        profile = TrustProfile(
+            user_id="user-1",
+            overall_score=0.7,
+            domain_tag="ride_hailing",
+        )
+        trust_repo.save_profile(profile)
+
+        found = trust_repo.find_profile("user-1")
+        assert found is not None
+        assert found.user_id == "user-1"
+
+    def test_save_and_find_evaluations(self, trust_repo):
+        eval1 = Evaluation(
+            evaluator_id="u1",
+            evaluatee_id="u2",
+            task_id="t1",
+            ratings={"quality": 0.9},
+            domain_tag="ride_hailing",
+        )
+        trust_repo.save_evaluation(eval1)
+
+        results = trust_repo.find_evaluations("u2")
+        assert len(results) == 1
+        assert results[0].ratings == {"quality": 0.9}
+        assert results[0].domain_tag == "ride_hailing"
+
+    def test_find_evaluations_empty(self, trust_repo):
+        assert trust_repo.find_evaluations("nobody") == []

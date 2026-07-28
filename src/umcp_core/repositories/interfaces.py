@@ -122,6 +122,13 @@ class TrustRepository(ABC):
     def find_evaluations(self, user_id: str) -> list[Evaluation]:
         ...
 
+    @abstractmethod
+    def find_profile_by_domain(
+        self, user_id: str, domain_tag: str
+    ) -> TrustProfile | None:
+        """按 domain 查询信任档案（domain 隔离）。"""
+        ...
+
 
 class EventRepository(ABC):
     """事件仓储接口（用于事件回放、审计）。"""
