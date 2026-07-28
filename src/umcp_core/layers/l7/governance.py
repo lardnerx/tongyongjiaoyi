@@ -47,6 +47,10 @@ class ExpressionAccessRule(AccessRule):
         if self._trust_engine_lookup is None:
             self._trust_engine_lookup = lookup
 
+    def is_lookup_bound(self) -> bool:
+        """返回 trust_engine_lookup 是否已绑定。"""
+        return self._trust_engine_lookup is not None
+
     def check(self, user: User, task: Task) -> bool:
         ctx = RuleContext(
             user=user,
@@ -390,6 +394,10 @@ class RuleEngine:
         """
         self._domain_trust_engines[domain.lower()] = engine
 
+    def get_trust_engine(self, domain: str) -> TrustEngine | None:
+        """返回指定 domain 的 TrustEngine（供测试内省用）。"""
+        return self._domain_trust_engines.get(domain.lower())
+
     def set_arbitration_policy(self, policy: ArbitrationPolicy) -> None:
         self._arbitration_policy = policy
 
@@ -407,7 +415,7 @@ class RuleEngine:
         rules = self._domain_access_rules.get(domain, []) + self._access_rules
         # 注入 domain→engine 路由能力到 ExpressionAccessRule（仅一次，幂等）
         for rule in rules:
-            if isinstance(rule, ExpressionAccessRule) and rule._trust_engine_lookup is None:
+            if isinstance(rule, ExpressionAccessRule) and not rule.is_lookup_bound():
                 rule.bind_trust_engine_lookup(
                     lambda d: self._domain_trust_engines.get(d)
                 )

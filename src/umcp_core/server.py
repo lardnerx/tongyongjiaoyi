@@ -507,6 +507,11 @@ class UMCPServer:
     def is_running(self) -> bool:
         return self._started
 
+    @property
+    def trust_aggregator(self) -> TrustAggregator:
+        """返回当前信任聚合器（供测试内省用）。"""
+        return self._trust_aggregator
+
 
 def _import_class(dotted_path: str) -> type:
     """根据点分路径导入类。"""

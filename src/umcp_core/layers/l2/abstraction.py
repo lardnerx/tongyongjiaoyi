@@ -26,6 +26,14 @@ class TaskFactory(ABC):
         """
         self._builders[task_type] = builder
 
+    def is_registered(self, task_type: str) -> bool:
+        """返回指定 task_type 是否已注册。"""
+        return task_type in self._builders
+
+    def registered_types(self) -> list[str]:
+        """返回所有已注册的 task_type 列表。"""
+        return list(self._builders.keys())
+
     @abstractmethod
     def create_task(
         self,

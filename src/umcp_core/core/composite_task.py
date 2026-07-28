@@ -103,6 +103,10 @@ class CompositeTask(PackageTask):
                 return sub
         raise KeyError(f"子任务 {subtask_id} 不存在")
 
+    def find_subtask(self, task_id: str) -> Task:
+        """查找指定 ID 的子任务（公共接口，供外部调用）。"""
+        return self._find_sub(task_id)
+
     def _build_reverse_deps(self) -> dict[str, list[str]]:
         reverse: dict[str, list[str]] = {}
         for sub_id, deps in self.dependencies.items():

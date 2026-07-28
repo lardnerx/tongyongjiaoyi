@@ -72,6 +72,10 @@ class Task(ABC):
         """绑定事件总线，用于状态变更时发布事件。"""
         self._event_bus = bus
 
+    def is_event_bus_bound(self) -> bool:
+        """返回事件总线是否已绑定。"""
+        return self._event_bus is not None
+
     @abstractmethod
     def task_type(self) -> str:
         """返回任务类型标识，如 'standard'、'custom'、'package'。"""

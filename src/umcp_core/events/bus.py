@@ -76,6 +76,11 @@ class EventBus:
             if handler in self._handlers[type_]:
                 self._handlers[type_].remove(handler)
 
+    def handler_count(self, event_type: EventType) -> int:
+        """返回指定事件类型的订阅 handler 数量（不含 global handler）。"""
+        with self._lock:
+            return len(self._handlers.get(event_type, []))
+
     def history(self) -> list[Event]:
         """返回事件历史快照（用于回放、调试）。"""
         with self._lock:
