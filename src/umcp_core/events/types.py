@@ -36,3 +36,9 @@ class EventType(str, Enum):
     RULE_TRIGGERED = "rule.triggered"
     DISPUTE_OPENED = "dispute.opened"
     DISPUTE_RESOLVED = "dispute.resolved"
+
+    # 复合任务编排（阶段四C）
+    SUBTASK_COMPLETED = "subtask.completed"
+    SUBTASK_CANCELLED = "subtask.cancelled"
+    COMPOSITE_COMPLETED = "composite.completed"
+    COMPOSITE_FAILED = "composite.failed"
