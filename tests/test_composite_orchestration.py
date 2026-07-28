@@ -170,6 +170,53 @@ class TestBridgeEvent:
         assert sub_a.status == TaskStatus.CANCELLED
         assert composite.status == TaskStatus.CANCELLED
 
+    def test_bridge_unsubscribed_after_composite_terminal(self):
+        """复合任务到达终态后，桥接函数应从 EventBus 取消订阅，避免闭包泄漏。"""
+        from umcp_core.events.types import EventType as _ET
+
+        server = _make_server_with_strategy()
+        sub_a = _make_subtask("a")
+        composite = CompositeTask(
+            demander_id="u1",
+            domain_tag=DomainTag.of("composite"),
+            subtasks=[sub_a],
+        )
+        # 记录订阅前后的 handler 数量
+        handlers_before = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        server.execute_composite(composite)
+        # 复合任务已 COMPLETED，桥接函数应已取消订阅
+        assert composite.status == TaskStatus.COMPLETED
+        handlers_after = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        assert handlers_after == handlers_before, (
+            f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
+        )
+
+    def test_bridge_unsubscribed_after_composite_failed(self):
+        """复合任务失败后，桥接函数应从 EventBus 取消订阅。"""
+        from umcp_core.events.types import EventType as _ET
+
+        class _NoMatchStrategy(InstantMatch):
+            def execute(self, task, candidates):
+                return MatchResult(task_id=task.task_id)
+
+        server = UMCPServer()
+        server.use_in_memory_repositories()
+        server.register_match_strategy("ride", _NoMatchStrategy())
+        sub_a = _make_subtask("a", domain="ride")
+        composite = CompositeTask(
+            demander_id="u1",
+            domain_tag=DomainTag.of("composite"),
+            subtasks=[sub_a],
+        )
+        handlers_before = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        server.execute_composite(composite)
+        # 复合任务已 CANCELLED，桥接函数应已取消订阅
+        assert composite.status == TaskStatus.CANCELLED
+        handlers_after = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        assert handlers_after == handlers_before, (
+            f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
+        )
+
 
 class TestCustomExecutor:
     def test_register_subtask_executor_overrides_default(self):

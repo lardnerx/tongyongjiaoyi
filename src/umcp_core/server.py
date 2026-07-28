@@ -385,6 +385,9 @@ class UMCPServer:
                 composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
             # 子任务状态变更后，尝试派发新就绪的子任务（串行依赖链推进）
             self._dispatch_ready_subtasks(composite)
+            # 复合任务到达终态后取消订阅，避免桥接函数闭包泄漏
+            if TaskStatus.is_terminal(composite.status):
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
 
         self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
 
