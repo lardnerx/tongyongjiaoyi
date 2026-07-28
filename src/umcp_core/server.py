@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from umcp_core.core.domain import DomainTag
+from umcp_core.core.task import Task
 from umcp_core.events.bus import EventBus, Event
 from umcp_core.events.types import EventType
 from umcp_core.layers.l1 import AuthProvider, PhoneAuthProvider
@@ -99,6 +100,9 @@ class UMCPServer:
 
         # 跨 domain 信任聚合器（默认算术平均）
         self._trust_aggregator: TrustAggregator = MeanTrustAggregator()
+
+        # 复合任务子任务执行器（按 domain 注册，覆盖默认行为）
+        self._subtask_executors: dict[str, Any] = {}
 
         # 已加载插件
         self._plugins: list[PluginDescriptor] = []
@@ -336,6 +340,99 @@ class UMCPServer:
                     self.rule_engine.add_access_rule(rule, domain=d)
             else:
                 self.rule_engine.add_access_rule(rule)
+
+    # ------------------------------------------------------------------
+    # 复合任务编排
+    # ------------------------------------------------------------------
+
+    def execute_composite(self, composite: CompositeTask) -> None:
+        """驱动复合任务执行。
+
+        流程：
+        1. 绑定 EventBus（订阅子任务事件）
+        2. 发布父任务 → 进入 MATCHING
+        3. 注册 TASK_COMPLETED → SUBTASK_* 桥接
+        4. 按 DAG 拓扑序启动就绪子任务
+        5. 子任务完成事件触发父任务状态转移（由 CompositeTask 事件回调处理）
+
+        本方法只负责"启动"，不负责"完成判定"——完成判定由事件驱动。
+        """
+        from umcp_core.core.composite_task import CompositeTask
+        from umcp_core.core.task import TaskStatus
+
+        if not isinstance(composite, CompositeTask):
+            raise TypeError(f"期望 CompositeTask，收到 {type(composite).__name__}")
+        if composite.status != TaskStatus.DRAFT:
+            raise RuntimeError(f"复合任务状态 {composite.status} 不允许执行")
+
+        # 1. 绑定 EventBus（触发 subscribe 子任务事件）
+        composite.bind_event_bus(self.event_bus)
+
+        # 2. 发布父任务
+        composite.publish()
+
+        # 3. 注册子任务事件桥接：TASK_COMPLETED → SUBTASK_*
+        subtask_ids = {s.task_id for s in composite.subtasks}
+
+        def _bridge_to_subtask_event(event: Event) -> None:
+            task_id = event.payload.get("task_id")
+            if task_id not in subtask_ids:
+                return
+            subtask = composite._find_sub(task_id)
+            if event.payload.get("cancelled"):
+                composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
+            else:
+                composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
+            # 子任务状态变更后，尝试派发新就绪的子任务（串行依赖链推进）
+            self._dispatch_ready_subtasks(composite)
+
+        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+
+        # 4. 启动所有就绪子任务
+        self._dispatch_ready_subtasks(composite)
+
+    def _dispatch_ready_subtasks(self, composite: CompositeTask) -> None:
+        """派发就绪子任务到对应 domain 执行。
+
+        仅绑定 EventBus，publish 时机交给 _execute_subtask_by_domain
+        或自定义执行器（避免双重 publish 与 DRAFT→MATCHING 后再 publish 的非法转移）。
+        """
+        for subtask in composite.ready_subtasks():
+            subtask.bind_event_bus(self.event_bus)
+            self._execute_subtask_by_domain(subtask)
+
+    def _execute_subtask_by_domain(self, subtask: Task) -> None:
+        """按子任务 domain_tag 路由到对应插件的匹配策略执行。"""
+        domain = subtask.domain_tag.value
+        custom_executor = self._subtask_executors.get(domain)
+        if custom_executor is not None:
+            custom_executor(subtask)
+            return
+
+        strategy = self.match_strategy_for(domain)
+        if strategy is None:
+            raise RuntimeError(f"domain {domain} 未注册匹配策略")
+        if self.resource_repo is None:
+            raise RuntimeError("resource_repo 未注入")
+
+        # 默认执行器负责把子任务从 DRAFT 推进到终态：
+        # publish → assign_to → start_execution → complete
+        subtask.publish()
+        candidates = self.resource_repo.find_available(subtask.domain_tag)
+        result = strategy.execute(subtask, candidates)
+        if not result.matched:
+            subtask.cancel()
+            return
+
+        subtask.assign_to(result.selected_resource_id)
+        subtask.start_execution()
+        subtask.complete()
+
+    def register_subtask_executor(
+        self, domain: str, executor: Any
+    ) -> None:
+        """注册特定 domain 的子任务执行器（覆盖默认 _execute_subtask_by_domain）。"""
+        self._subtask_executors[domain.lower()] = executor
 
     # ------------------------------------------------------------------
     # 启动与停止
