@@ -23,7 +23,7 @@ class TestEscortPluginLoading:
         assert plugins[0].version == "1.0.0"
 
     def test_task_factory_registered_escort_type(self, server_with_plugin: UMCPServer):
-        assert "escort" in server_with_plugin.task_factory._builders
+        assert server_with_plugin.task_factory.is_registered("escort")
 
     def test_match_strategy_injected(self, server_with_plugin: UMCPServer):
         from umcp_core.layers.l3 import InstantMatch

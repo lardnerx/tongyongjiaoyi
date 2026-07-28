@@ -25,9 +25,8 @@ def test_plugin_loads_successfully():
 def test_task_factory_registers_buyer_and_tender_types():
     """task_factory 注册了 buyer 和 tender 两种任务类型。"""
     server = _load_plugin()
-    builders = server.task_factory._builders
-    assert "buyer" in builders
-    assert "tender" in builders
+    assert server.task_factory.is_registered("buyer")
+    assert server.task_factory.is_registered("tender")
 
 
 def test_match_strategy_is_reverse_auction():

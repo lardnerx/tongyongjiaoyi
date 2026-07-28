@@ -154,6 +154,7 @@ def test_apply_manifest_registers_by_domain():
     from umcp_core.server import PluginDescriptor
     from pathlib import Path
     descriptor = PluginDescriptor(manifest, Path("."))
+    # 直接调用私有方法以隔离测试 manifest 解析逻辑，不经过 load_plugin 的文件加载流程。
     server._apply_manifest(descriptor)
 
     # 按 domain 应能查到对应策略
@@ -189,6 +190,7 @@ def test_apply_manifest_without_domain_falls_back_to_single_value():
     from umcp_core.server import PluginDescriptor
     from pathlib import Path
     descriptor = PluginDescriptor(manifest, Path("."))
+    # 直接调用私有方法以隔离测试 manifest 解析逻辑，不经过 load_plugin 的文件加载流程。
     server._apply_manifest(descriptor)
 
     # 单值属性应被设置
@@ -223,6 +225,7 @@ def test_apply_manifest_with_domain_list():
     from umcp_core.server import PluginDescriptor
     from pathlib import Path
     descriptor = PluginDescriptor(manifest, Path("."))
+    # 直接调用私有方法以隔离测试 manifest 解析逻辑，不经过 load_plugin 的文件加载流程。
     server._apply_manifest(descriptor)
 
     # 两个 domain 都应能查到策略

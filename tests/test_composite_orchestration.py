@@ -100,7 +100,7 @@ class TestExecuteComposite:
             subtasks=[_make_subtask("a")],
         )
         server.execute_composite(composite)
-        assert composite._event_bus is server.event_bus
+        assert composite.is_event_bus_bound()
 
     def test_dispatch_ready_subtasks_publishes_subtasks(self):
         server = _make_server_with_strategy()
@@ -119,6 +119,8 @@ class TestExecuteSubtaskByDomain:
     def test_execute_subtask_by_domain_uses_domain_strategy(self):
         server = _make_server_with_strategy("ride")
         sub = _make_subtask("a", domain="ride")
+        # 直接调用私有方法以隔离测试 _execute_subtask_by_domain 的路由逻辑，
+        # 不经过 execute_composite 的 DAG 派发流程。
         server._execute_subtask_by_domain(sub)
         assert sub.status == TaskStatus.COMPLETED
         assert sub.assigned_resource_id == "res_1"
@@ -133,6 +135,7 @@ class TestExecuteSubtaskByDomain:
         server.use_in_memory_repositories()
         server.register_match_strategy("ride", _NoMatchStrategy())
         sub = _make_subtask("a", domain="ride")
+        # 直接调用私有方法以隔离测试无匹配时的取消逻辑。
         server._execute_subtask_by_domain(sub)
         assert sub.status == TaskStatus.CANCELLED
 
@@ -182,11 +185,11 @@ class TestBridgeEvent:
             subtasks=[sub_a],
         )
         # 记录订阅前后的 handler 数量
-        handlers_before = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        handlers_before = server.event_bus.handler_count(_ET.TASK_COMPLETED)
         server.execute_composite(composite)
         # 复合任务已 COMPLETED，桥接函数应已取消订阅
         assert composite.status == TaskStatus.COMPLETED
-        handlers_after = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        handlers_after = server.event_bus.handler_count(_ET.TASK_COMPLETED)
         assert handlers_after == handlers_before, (
             f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
         )
@@ -208,11 +211,11 @@ class TestBridgeEvent:
             domain_tag=DomainTag.of("composite"),
             subtasks=[sub_a],
         )
-        handlers_before = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        handlers_before = server.event_bus.handler_count(_ET.TASK_COMPLETED)
         server.execute_composite(composite)
         # 复合任务已 CANCELLED，桥接函数应已取消订阅
         assert composite.status == TaskStatus.CANCELLED
-        handlers_after = len(server.event_bus._handlers.get(_ET.TASK_COMPLETED, []))
+        handlers_after = server.event_bus.handler_count(_ET.TASK_COMPLETED)
         assert handlers_after == handlers_before, (
             f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
         )

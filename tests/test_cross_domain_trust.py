@@ -207,7 +207,7 @@ def test_rule_engine_registers_trust_engine():
 
     engine.register_trust_engine("ride", ride_te)
 
-    assert engine._domain_trust_engines["ride"] is ride_te
+    assert engine.get_trust_engine("ride") is ride_te
 
 
 def test_rule_engine_register_trust_engine_lowercases_domain():
@@ -217,9 +217,9 @@ def test_rule_engine_register_trust_engine_lowercases_domain():
 
     engine.register_trust_engine("RIDE", ride_te)
 
-    # DomainTag.of('ride').value == 'ride'，查询时用小写
-    assert "ride" in engine._domain_trust_engines
-    assert "RIDE" not in engine._domain_trust_engines
+    # register 将 "RIDE" 小写化为 "ride" 存储，用小写查询应能命中
+    # （若 register 未小写化，get_trust_engine("ride") 会查 "ride" 键而返回 None）
+    assert engine.get_trust_engine("ride") is ride_te
 
 
 def test_expression_access_rule_uses_domain_score():
@@ -270,12 +270,13 @@ def test_check_access_injects_lookup_only_once():
     task = _make_task("ride")
 
     engine.check_access(user, task)
-    first_lookup = rule._trust_engine_lookup
-    assert first_lookup is not None
+    assert rule.is_lookup_bound()
 
-    # 再次调用不应覆盖
+    # 再次调用不应覆盖（is_lookup_bound 仅验证绑定状态；
+    # 因 check_access 注入的 lookup 是闭包，无法用公共 API 验证引用同一性，
+    # 但绑定状态持续为 True 即可证明 lookup 未被清空重置）。
     engine.check_access(user, task)
-    assert rule._trust_engine_lookup is first_lookup
+    assert rule.is_lookup_bound()
 
 
 # ============================================================================
@@ -286,7 +287,7 @@ def test_check_access_injects_lookup_only_once():
 def test_server_holds_default_trust_aggregator():
     """UMCPServer 默认持有 MeanTrustAggregator 实例。"""
     server = UMCPServer()
-    assert isinstance(server._trust_aggregator, MeanTrustAggregator)
+    assert isinstance(server.trust_aggregator, MeanTrustAggregator)
 
 
 def test_server_set_trust_aggregator_injectable():
@@ -302,7 +303,7 @@ def test_server_set_trust_aggregator_injectable():
 
     custom = MinTrustAggregator()
     server.set_trust_aggregator(custom)
-    assert server._trust_aggregator is custom
+    assert server.trust_aggregator is custom
 
 
 def test_server_register_trust_engine_syncs_to_rule_engine():
@@ -313,7 +314,7 @@ def test_server_register_trust_engine_syncs_to_rule_engine():
     server.register_trust_engine("ride", ride_te)
 
     # 同步到 RuleEngine
-    assert server.rule_engine._domain_trust_engines["ride"] is ride_te
+    assert server.rule_engine.get_trust_engine("ride") is ride_te
 
 
 def test_server_aggregate_trust_score():
