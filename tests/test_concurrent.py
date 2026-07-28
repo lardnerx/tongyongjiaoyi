@@ -405,13 +405,7 @@ class TestInMemoryResourceRepositoryConcurrent:
             try:
                 barrier.wait(timeout=5)
                 while not stop.is_set():
-                    try:
-                        result = repo.find_available(domain)
-                    except RuntimeError:
-                        # find_available 内部未持 _lock，dict 大小变化时迭代会抛此异常。
-                        # 此为实现限制，验证焦点是读到的资源状态字段完整，
-                        # 该发现已在测试汇报中标注。
-                        continue
+                    result = repo.find_available(domain)
                     # 每个返回的资源 domain 应匹配且 status 应是 IDLE
                     for r in result:
                         assert r.domain_tag == domain, "find_available 返回 domain 不匹配"

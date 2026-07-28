@@ -37,18 +37,21 @@ class InMemoryTaskRepository(TaskRepository):
             return task
 
     def find_by_id(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+        with self._lock:
+            return self._tasks.get(task_id)
 
     def find_by_demander(self, demander_id: str) -> list[Task]:
-        return [t for t in self._tasks.values() if t.demander_id == demander_id]
+        with self._lock:
+            return [t for t in self._tasks.values() if t.demander_id == demander_id]
 
     def find_by_status(
         self, status: str, domain_tag: DomainTag | None = None
     ) -> list[Task]:
-        result = [t for t in self._tasks.values() if t.status == status]
-        if domain_tag is not None:
-            result = [t for t in result if t.domain_tag == domain_tag]
-        return result
+        with self._lock:
+            result = [t for t in self._tasks.values() if t.status == status]
+            if domain_tag is not None:
+                result = [t for t in result if t.domain_tag == domain_tag]
+            return result
 
     def update_status(self, task_id: str, new_status: str) -> None:
         with self._lock:
@@ -69,17 +72,20 @@ class InMemoryResourceRepository(ResourceRepository):
             return resource
 
     def find_by_id(self, resource_id: str) -> Resource | None:
-        return self._resources.get(resource_id)
+        with self._lock:
+            return self._resources.get(resource_id)
 
     def find_by_supplier(self, supplier_id: str) -> list[Resource]:
-        return [r for r in self._resources.values() if r.supplier_id == supplier_id]
+        with self._lock:
+            return [r for r in self._resources.values() if r.supplier_id == supplier_id]
 
     def find_available(self, domain_tag: DomainTag) -> list[Resource]:
-        return [
-            r
-            for r in self._resources.values()
-            if r.domain_tag == domain_tag and r.is_available()
-        ]
+        with self._lock:
+            return [
+                r
+                for r in self._resources.values()
+                if r.domain_tag == domain_tag and r.is_available()
+            ]
 
     def update_status(self, resource_id: str, new_status: str) -> None:
         with self._lock:
@@ -100,13 +106,16 @@ class InMemoryDealRepository(DealRepository):
             return deal
 
     def find_by_id(self, deal_id: str) -> Deal | None:
-        return self._deals.get(deal_id)
+        with self._lock:
+            return self._deals.get(deal_id)
 
     def find_by_task(self, task_id: str) -> list[Deal]:
-        return [d for d in self._deals.values() if d.task_id == task_id]
+        with self._lock:
+            return [d for d in self._deals.values() if d.task_id == task_id]
 
     def find_by_supplier(self, supplier_id: str) -> list[Deal]:
-        return [d for d in self._deals.values() if d.supplier_id == supplier_id]
+        with self._lock:
+            return [d for d in self._deals.values() if d.supplier_id == supplier_id]
 
 
 class InMemoryUserRepository(UserRepository):
@@ -123,10 +132,12 @@ class InMemoryUserRepository(UserRepository):
             return user
 
     def find_by_id(self, user_id: str) -> User | None:
-        return self._users.get(user_id)
+        with self._lock:
+            return self._users.get(user_id)
 
     def find_by_name(self, name: str) -> User | None:
-        return self._by_name.get(name)
+        with self._lock:
+            return self._by_name.get(name)
 
 
 class InMemoryTrustRepository(TrustRepository):
@@ -141,14 +152,16 @@ class InMemoryTrustRepository(TrustRepository):
             return profile
 
     def find_profile(self, user_id: str) -> TrustProfile | None:
-        return self._profiles.get(user_id)
+        with self._lock:
+            return self._profiles.get(user_id)
 
     def save_evaluation(self, evaluation: Evaluation) -> None:
         with self._lock:
             self._evaluations.setdefault(evaluation.evaluatee_id, []).append(evaluation)
 
     def find_evaluations(self, user_id: str) -> list[Evaluation]:
-        return list(self._evaluations.get(user_id, []))
+        with self._lock:
+            return list(self._evaluations.get(user_id, []))
 
 
 class InMemoryEventRepository(EventRepository):
