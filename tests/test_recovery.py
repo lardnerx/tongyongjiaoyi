@@ -41,12 +41,20 @@ def _make_server_with_pg(pg_bundle) -> UMCPServer:
     return server
 
 
+def _complete_subtask(sub) -> None:
+    """推进子任务经过完整生命周期到 COMPLETED（DRAFT → COMPLETED 非法，需逐步转移）。"""
+    sub.publish()
+    sub.assign_to("test_res")
+    sub.start_execution()
+    sub.complete()
+
+
 class TestRecoverCompositeTasks:
     def test_recover_draft_subtask(self, pg_bundle):
         """DRAFT 子任务应被重新派发。"""
         server = _make_server_with_pg(pg_bundle)
         # 注册一个同步执行器（立即完成子任务）
-        server.register_subtask_executor("ride_hailing", lambda sub: sub.complete())
+        server.register_subtask_executor("ride_hailing", _complete_subtask)
 
         sub_a = _make_subtask("a")
         sub_b = _make_subtask("b")
@@ -84,7 +92,7 @@ class TestRecoverCompositeTasks:
     def test_recover_skips_terminal_composite(self, pg_bundle):
         """已终态的复合任务应跳过。"""
         server = _make_server_with_pg(pg_bundle)
-        server.register_subtask_executor("ride_hailing", lambda sub: sub.complete())
+        server.register_subtask_executor("ride_hailing", _complete_subtask)
 
         sub = _make_subtask("x")
         composite = CompositeTask(
@@ -133,7 +141,7 @@ class TestRecoverCompositeTasks:
     def test_recover_multiple_composites(self, pg_bundle):
         """多个复合任务应串行恢复。"""
         server = _make_server_with_pg(pg_bundle)
-        server.register_subtask_executor("ride_hailing", lambda sub: sub.complete())
+        server.register_subtask_executor("ride_hailing", _complete_subtask)
 
         for i in range(3):
             sub = _make_subtask(f"multi-{i}")
