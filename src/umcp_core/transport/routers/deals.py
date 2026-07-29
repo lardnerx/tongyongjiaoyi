@@ -122,7 +122,7 @@ async def activate_deal(
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
     try:
         deal.activate()
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.deal_repo.save(deal)
     return ok(message="已激活")
@@ -140,7 +140,7 @@ async def complete_deal(
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
     try:
         deal.complete()
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.deal_repo.save(deal)
     return ok(message="已完成")
@@ -158,7 +158,7 @@ async def dispute_deal(
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
     try:
         deal.open_dispute()
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.deal_repo.save(deal)
     return ok(message="争议已开启")

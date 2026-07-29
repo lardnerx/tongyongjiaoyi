@@ -133,7 +133,7 @@ async def cancel_task(
         raise NotFoundError(message=f"任务 {task_id} 不存在")
     try:
         task.cancel()
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
     return ok(message="已取消")
@@ -154,7 +154,7 @@ async def complete_task(
         raise NotFoundError(message=f"任务 {task_id} 不存在")
     try:
         task.complete()
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
     return ok(message="已完成")
