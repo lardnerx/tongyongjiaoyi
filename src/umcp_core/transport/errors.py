@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -63,15 +70,6 @@ class MatchFailedError(ApiError):
 class PaymentFailedError(ApiError):
     def __init__(self, code: int = 3002, message: str = "支付失败", status: int = 422, details: Any = None) -> None:
         super().__init__(code, message, status, details)
-
-
-import logging
-
-from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-
-logger = logging.getLogger(__name__)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

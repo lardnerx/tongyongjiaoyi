@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 import jwt as pyjwt
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from umcp_core.core.base import User
 from umcp_core.core.domain import Credential
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_jwt_service, get_server
-from umcp_core.transport.auth import JwtService
+from umcp_core.transport.auth import JwtService, user_from_claims
 from umcp_core.transport.errors import InvalidCredentialError
 from umcp_core.transport.schemas import Envelope, ok
 
@@ -72,7 +72,6 @@ async def refresh(
         raise InvalidCredentialError(message="非 refresh token")
 
     # 重建 User 并签发新 token 对
-    from umcp_core.transport.auth import user_from_claims
     user = user_from_claims(payload)
     tokens = jwt_service.issue(user)
     return ok(tokens)
@@ -80,17 +79,24 @@ async def refresh(
 
 @router.post("/logout", response_model=Envelope)
 async def logout(
+    request: Request,
     current_user: User = Depends(get_current_user),
     jwt_service: JwtService = Depends(get_jwt_service),
     server: UMCPServer = Depends(get_server),
 ) -> Envelope:
     """登出，吊销当前 token。"""
-    # get_current_user 已校验 token 有效；此处需要 jti，重新解码
-    # 由于 deps 已解码一次，这里为简化直接吊销 user_id 关联的最近 jti
-    # 实际实现：让 get_current_user 把 jti 存到 User.metadata 或返回 (user, jti)
-    # 简化方案：登出时不传 jti，用 user_id 吊销（依赖 access_ttl 短）
-    # 更严谨：让 deps 把 payload 也注入
-    server.auth_provider.revoke(current_user)
+    # 从 Authorization header 提取 token 并解码获取 jti
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if token:
+        try:
+            payload = jwt_service.decode(token)
+            jti = payload.get("jti")
+            if jti:
+                jwt_service.revoke(jti)
+        except Exception:
+            # 解码失败忽略（get_current_user 已校验过，此处兜底）
+            pass
     return ok(message="已登出")
 
 

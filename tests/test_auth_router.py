@@ -79,6 +79,16 @@ class TestMe:
         resp = client.get("/api/v1/auth/me")
         assert resp.status_code == 401
 
+    def test_me_with_invalid_token_returns_401(self):
+        """/me 用无效 token 应返回 401。"""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer invalid.token.string"},
+        )
+        assert resp.status_code == 401
+
 
 class TestLogout:
     def test_logout_returns_ok(self):
@@ -95,6 +105,24 @@ class TestLogout:
         )
         assert resp.status_code == 200
         assert resp.json()["code"] == 0
+
+    def test_logout_revokes_token(self):
+        """登出后用同一 token 访问 /me 应返回 401。"""
+        app = _make_app()
+        client = TestClient(app)
+        login_resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13800000000"},
+        )
+        token = login_resp.json()["data"]["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        # 登出
+        logout_resp = client.post("/api/v1/auth/logout", headers=headers)
+        assert logout_resp.status_code == 200
+        # 再用同一 token 访问 /me 应 401（token 已吊销）
+        me_resp = client.get("/api/v1/auth/me", headers=headers)
+        assert me_resp.status_code == 401
+        assert me_resp.json()["code"] == 1001  # InvalidCredentialError
 
 
 class TestRefresh:
@@ -113,3 +141,19 @@ class TestRefresh:
         assert resp.status_code == 200
         body = resp.json()
         assert "access_token" in body["data"]
+
+    def test_refresh_with_access_token_returns_401(self):
+        """refresh 端点用 access_token（type!="refresh"）应返回 401。"""
+        app = _make_app()
+        client = TestClient(app)
+        login_resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13800000000"},
+        )
+        access_token = login_resp.json()["data"]["access_token"]
+        resp = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": access_token},  # 用 access_token 而非 refresh_token
+        )
+        assert resp.status_code == 401
+        assert resp.json()["code"] == 1001
