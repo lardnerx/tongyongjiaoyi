@@ -430,6 +430,47 @@ class UMCPServer:
         # 4. 启动所有就绪子任务
         self._dispatch_ready_subtasks(composite)
 
+    def publish_and_match(self, task: Task) -> None:
+        """发布并匹配单任务（HTTP 层入口）。
+
+        - 标准任务：publish → 匹配 → assign → start_execution → complete
+        - 复合任务：委托 execute_composite
+        - 无匹配：cancel
+
+        Args:
+            task: 待发布的任务（必须 DRAFT 状态）
+
+        Raises:
+            RuntimeError: domain 未注册匹配策略，或 resource_repo 未注入
+        """
+        from umcp_core.core.composite_task import CompositeTask
+
+        if isinstance(task, CompositeTask):
+            self.execute_composite(task)
+            return
+
+        domain = task.domain_tag.value
+        strategy = self.match_strategy_for(domain)
+        if strategy is None:
+            raise RuntimeError(f"domain {domain} 未注册匹配策略")
+        if self.resource_repo is None:
+            raise RuntimeError("resource_repo 未注入")
+
+        # 持久化（若启用 PG）
+        self.task_repo.save(task)
+
+        task.bind_event_bus(self.event_bus)
+        task.publish()
+        candidates = self.resource_repo.find_available(task.domain_tag)
+        result = strategy.execute(task, candidates)
+        if not result.matched:
+            task.cancel()
+            return
+        task.assign_to(result.selected_resource_id)
+        task.start_execution()
+        task.complete()
+        self.task_repo.save(task)
+
     def _dispatch_ready_subtasks(self, composite: CompositeTask) -> None:
         """派发就绪子任务到对应 domain执行。
 
