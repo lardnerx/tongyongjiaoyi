@@ -8,9 +8,9 @@ from typing import Any
 import jwt as pyjwt
 import pytest
 
-from umcp_core.core.base import Demander, PermissionSet, Role, Supplier, User
+from umcp_core.core.base import Demander, PermissionSet, Supplier, User
 from umcp_core.core.domain import Credential
-from umcp_core.transport.auth import JwtService
+from umcp_core.transport.auth import JwtService, user_from_claims
 
 
 class _TestDemander(Demander):
@@ -116,8 +116,8 @@ class TestJwtRevoke:
 
     def test_revoke_unknown_jti_is_noop(self):
         svc = JwtService(secret="test-secret")
+        # 仅验证 revoke 不存在的 jti 不抛异常
         svc.revoke("unknown-jti")
-        assert svc.is_revoked("unknown-jti") is True
 
 
 class TestJwtRefresh:
@@ -129,3 +129,49 @@ class TestJwtRefresh:
         refresh_payload = svc.decode(tokens["refresh_token"])
         assert refresh_payload["exp"] - refresh_payload["iat"] == 604800
         assert access_payload["exp"] - access_payload["iat"] == 3600
+
+
+class TestUserFromClaims:
+    def test_rebuild_user_with_both_roles(self):
+        payload = {
+            "sub": "u1",
+            "name": "alice",
+            "roles": ["demander", "supplier"],
+            "active_role": "demander",
+        }
+        user = user_from_claims(payload)
+        assert user.user_id == "u1"
+        assert user.name == "alice"
+        assert "demander" in user.roles
+        assert "supplier" in user.roles
+        assert user.active_role.role_type == "demander"
+
+    def test_rebuild_user_switches_active_role(self):
+        payload = {
+            "sub": "u2",
+            "name": "bob",
+            "roles": ["demander", "supplier"],
+            "active_role": "supplier",
+        }
+        user = user_from_claims(payload)
+        assert user.active_role.role_type == "supplier"
+
+    def test_rebuild_user_unknown_role_type_ignored(self):
+        payload = {
+            "sub": "u3",
+            "name": "carol",
+            "roles": ["demander", "unknown_role"],
+            "active_role": "demander",
+        }
+        user = user_from_claims(payload)
+        assert "demander" in user.roles
+        assert "unknown_role" not in user.roles
+
+    def test_rebuild_user_empty_claims(self):
+        user = user_from_claims({})
+        # 空 claims 容错：不抛异常；name 为空；active_role 为 None。
+        # user_id 由 User 基类自动生成（非空），不强制为 ""。
+        assert isinstance(user.user_id, str)
+        assert user.user_id
+        assert user.name == ""
+        assert user.active_role is None

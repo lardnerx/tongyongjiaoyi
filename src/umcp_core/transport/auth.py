@@ -9,7 +9,7 @@ from typing import Any
 
 import jwt as pyjwt
 
-from umcp_core.core.base import Demander, PermissionSet, Role, Supplier, User
+from umcp_core.core.base import Demander, PermissionSet, Supplier, User
 from umcp_core.core.domain import Credential
 
 
@@ -121,5 +121,5 @@ class _ClaimsSupplier(Supplier):
 class _ClaimsUser(User):
     """从 JWT claims 重建的轻量 User。authenticate 永远返回 True（已通过 JWT 校验）。"""
 
-    def authenticate(self, cred: Credential) -> bool:
+    def authenticate(self, credential: Credential) -> bool:
         return True
