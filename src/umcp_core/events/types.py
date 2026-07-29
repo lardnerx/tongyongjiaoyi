@@ -37,6 +37,16 @@ class EventType(str, Enum):
     DISPUTE_OPENED = "dispute.opened"
     DISPUTE_RESOLVED = "dispute.resolved"
 
+    # 资源生命周期（阶段五B 扩展）
+    RESOURCE_REGISTERED = "resource.registered"
+    RESOURCE_STATUS_CHANGED = "resource.status_changed"
+
+    # 交易生命周期（阶段五B 扩展）
+    DEAL_CREATED = "deal.created"
+    DEAL_PAID = "deal.paid"
+    DEAL_COMPLETED = "deal.completed"
+    DEAL_DISPUTED = "deal.disputed"
+
     # 复合任务编排（阶段四C）
     SUBTASK_COMPLETED = "subtask.completed"
     SUBTASK_CANCELLED = "subtask.cancelled"

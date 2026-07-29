@@ -71,6 +71,12 @@ class EventBus:
         with self._lock:
             self._global_handlers.append(handler)
 
+    def unsubscribe_all(self, handler: EventHandler) -> None:
+        """取消订阅全局事件（与 subscribe_all 配对）。"""
+        with self._lock:
+            if handler in self._global_handlers:
+                self._global_handlers.remove(handler)
+
     def unsubscribe(self, type_: EventType, handler: EventHandler) -> None:
         with self._lock:
             if handler in self._handlers[type_]:
