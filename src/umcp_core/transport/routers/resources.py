@@ -12,7 +12,7 @@ from umcp_core.core.domain import DomainTag
 from umcp_core.core.resource import Capability, Resource, ResourceStatus
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
-from umcp_core.transport.errors import NotFoundError, ValidationError
+from umcp_core.transport.errors import IllegalStateError, NotFoundError, ValidationError
 from umcp_core.transport.schemas import Envelope, PaginatedData, ok, paginated
 
 router = APIRouter()
@@ -84,7 +84,10 @@ async def register_resource(
         capabilities=caps,
         metadata=req.metadata or {},
     )
-    res.register()  # OFFLINE → IDLE
+    try:
+        res.register()  # OFFLINE → IDLE
+    except RuntimeError as e:
+        raise IllegalStateError(message=str(e)) from e
     server.resource_repo.save(res)
     return ok(_resource_to_info(res))
 

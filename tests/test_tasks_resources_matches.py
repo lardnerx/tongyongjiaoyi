@@ -131,29 +131,49 @@ class TestTasks:
         assert resp.status_code == 404
         assert resp.json()["code"] == 2001
 
-    def test_cancel_task(self):
+    def test_cancel_completed_task_returns_409(self):
+        """已完成任务 cancel 应返回 409。"""
         app, _ = _make_app()
         client = TestClient(app)
         token = _login_token(client)
-        # 创建一个未匹配的任务（用 no_match domain）
-        resp = client.post(
+        # 用 ride 创建任务（会立即完成匹配）
+        create_resp = client.post(
             "/api/v1/tasks",
-            json={"demander_id": "u1", "domain_tag": "no_match_domain"},
+            json={"demander_id": "u1", "domain_tag": "ride"},
             headers={"Authorization": f"Bearer {token}"},
         )
-        # no_match_domain 无策略 → publish_and_match 抛 RuntimeError → 500
-        # 改为创建标准任务后直接 cancel
-        # 先用 ride 创建（会立即完成），无法 cancel。改为创建 DRAFT 任务：
-        # 实际上 publish_and_match 立即完成，无法测 cancel。
-        # 用 GET 验证创建成功即可
-        if resp.status_code == 200:
-            task_id = resp.json()["data"]["task_id"]
-            # 已完成的任务 cancel 应返回 409
-            cancel_resp = client.post(
-                f"/api/v1/tasks/{task_id}/cancel",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            assert cancel_resp.status_code == 409
+        assert create_resp.status_code == 200  # 强制校验创建成功
+        task_id = create_resp.json()["data"]["task_id"]
+        # 已完成的任务 cancel 应返回 409
+        cancel_resp = client.post(
+            f"/api/v1/tasks/{task_id}/cancel",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert cancel_resp.status_code == 409
+        assert cancel_resp.json()["code"] == 2002  # IllegalStateError
+
+    def test_create_task_no_strategy_returns_409(self):
+        """domain 无匹配策略应返回 409（而非 500）。"""
+        # 构造一个未注册任何匹配策略的 server（match_strategy 保持 None，
+        # 否则 register_match_strategy 会设置单值兜底，导致未知 domain 回退命中）
+        server = UMCPServer()
+        server.use_in_memory_repositories()
+        server.set_auth_provider(PhoneAuthProvider())
+        jwt_service = JwtService(secret="test-secret")
+        app = FastAPI()
+        app.state.server = server
+        app.state.jwt_service = jwt_service
+        register_routers(app)
+        register_exception_handlers(app)
+        client = TestClient(app)
+        token = _login_token(client)
+        resp = client.post(
+            "/api/v1/tasks",
+            json={"demander_id": "u1", "domain_tag": "no_such_domain"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 409
+        assert resp.json()["code"] == 2002
 
 
 class TestResources:

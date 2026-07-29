@@ -54,7 +54,11 @@ async def create_task(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope[TaskInfo]:
-    """发布标准任务并匹配。"""
+    """发布标准任务并匹配。
+
+    注意：当前实现允许已认证用户用任意 demander_id 创建任务（规格简化）。
+    生产环境应校验 req.demander_id == current_user.user_id。
+    """
     task = StandardTask(
         demander_id=req.demander_id,
         domain_tag=DomainTag.of(req.domain_tag),
@@ -62,7 +66,10 @@ async def create_task(
         description=req.description,
         structured_fields=req.structured_fields or {},
     )
-    server.publish_and_match(task)
+    try:
+        server.publish_and_match(task)
+    except RuntimeError as e:
+        raise IllegalStateError(message=str(e)) from e
     return ok(_task_to_info(task))
 
 
@@ -117,7 +124,10 @@ async def cancel_task(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """取消任务。"""
+    """取消任务。
+
+    注意：当前未校验任务所属（规格简化）。生产环境应校验 task.demander_id == current_user.user_id。
+    """
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"任务 {task_id} 不存在")
@@ -135,7 +145,10 @@ async def complete_task(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """标记任务完成。"""
+    """标记任务完成。
+
+    注意：当前未校验任务所属（规格简化）。生产环境应校验 task.demander_id == current_user.user_id。
+    """
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"任务 {task_id} 不存在")
