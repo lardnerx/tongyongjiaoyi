@@ -68,7 +68,7 @@ async def create_task(
     )
     try:
         server.publish_and_match(task)
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     return ok(_task_to_info(task))
 
