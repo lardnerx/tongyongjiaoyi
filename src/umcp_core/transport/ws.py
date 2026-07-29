@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -12,6 +13,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 from umcp_core.core.base import User
 from umcp_core.events.bus import Event
 from umcp_core.events.types import EventType
+
+logger = logging.getLogger(__name__)
 
 
 # 仅推送业务事件，不推内部桥接事件
@@ -65,6 +68,7 @@ class ConnectionManager:
             try:
                 await ws.send_json(message)
             except Exception:
+                logger.debug("WS 推送失败，连接将被清理: user_id=%s", user_id, exc_info=True)
                 dead.append(ws)
         if dead:
             with self._lock:
@@ -85,7 +89,7 @@ class ConnectionManager:
                 try:
                     await ws.close()
                 except Exception:
-                    pass
+                    logger.debug("WS 关闭连接失败", exc_info=True)
 
 
 def _extract_user_ids(event: Event) -> list[str]:
@@ -96,12 +100,10 @@ def _extract_user_ids(event: Event) -> list[str]:
     """
     ids: list[str] = []
     payload = event.payload or {}
-    if "demander_id" in payload:
-        ids.append(payload["demander_id"])
-    if "supplier_id" in payload:
-        ids.append(payload["supplier_id"])
-    if "user_id" in payload:
-        ids.append(payload["user_id"])
+    for key in ("demander_id", "supplier_id", "user_id"):
+        v = payload.get(key)
+        if isinstance(v, str):
+            ids.append(v)
     return list(dict.fromkeys(ids))  # 去重保序
 
 
@@ -133,9 +135,19 @@ def make_ws_event_bridge(
             return
         message = _format_ws_message(event)
         for uid in user_ids:
-            asyncio.run_coroutine_threadsafe(
+            fut = asyncio.run_coroutine_threadsafe(
                 manager.send_to_user(uid, message),
                 loop,
             )
+            fut.add_done_callback(_log_future_exception)
 
     return _bridge
+
+
+def _log_future_exception(fut: Any) -> None:
+    """记录 run_coroutine_threadsafe 的协程异常，避免静默吞掉。"""
+    if fut.cancelled():
+        return
+    exc = fut.exception()
+    if exc is not None:
+        logger.warning("WS 推送协程异常: %s", exc, exc_info=exc)

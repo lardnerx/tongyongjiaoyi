@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -110,6 +112,55 @@ class TestSendToUser:
         # 异常连接应被清理
         assert "u1" not in mgr._connections
 
+    @pytest.mark.asyncio
+    async def test_send_to_user_logs_exception(self, caplog):
+        """send_to_user 推送失败应记录日志，不应静默吞掉。"""
+        mgr = ConnectionManager()
+        user = _make_user("u1")
+        ws = _make_ws()
+        ws.send_json.side_effect = RuntimeError("connection broken")
+        await mgr.connect(ws, user)
+        with caplog.at_level(logging.DEBUG, logger="umcp_core.transport.ws"):
+            await mgr.send_to_user("u1", {"type": "test"})
+        assert any(
+            r.exc_info and "connection broken" in str(r.exc_info[1])
+            for r in caplog.records
+        )
+
+
+class TestConnectionManagerDisconnectAll:
+    @pytest.mark.asyncio
+    async def test_disconnect_all_closes_all_connections(self):
+        mgr = ConnectionManager()
+        user1 = _make_user("u1")
+        user2 = _make_user("u2")
+        ws1 = _make_ws()
+        ws1.close = AsyncMock()
+        ws2 = _make_ws()
+        ws2.close = AsyncMock()
+        await mgr.connect(ws1, user1)
+        await mgr.connect(ws2, user2)
+        await mgr.disconnect_all()
+        assert mgr._connections == {}
+        ws1.close.assert_called_once()
+        ws2.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_all_logs_exception(self, caplog):
+        """disconnect_all 关闭失败应记录日志，不应静默吞掉。"""
+        mgr = ConnectionManager()
+        user = _make_user("u1")
+        ws = _make_ws()
+        ws.close = AsyncMock(side_effect=RuntimeError("close failed"))
+        await mgr.connect(ws, user)
+        with caplog.at_level(logging.DEBUG, logger="umcp_core.transport.ws"):
+            await mgr.disconnect_all()
+        assert mgr._connections == {}
+        assert any(
+            r.exc_info and "close failed" in str(r.exc_info[1])
+            for r in caplog.records
+        )
+
 
 class TestEventBridge:
     def test_pushable_events_contains_task_events(self):
@@ -153,4 +204,97 @@ class TestEventBridge:
             # 不应调用 send_to_user
             mgr.send_to_user.assert_not_called()
         finally:
+            loop.close()
+
+    def test_extract_user_ids_from_supplier_id(self):
+        event = Event(
+            type=EventType.RESOURCE_STATUS_CHANGED,
+            payload={"resource_id": "r1", "supplier_id": "u_supplier"},
+        )
+        ids = _extract_user_ids(event)
+        assert ids == ["u_supplier"]
+
+    def test_extract_user_ids_from_user_id(self):
+        event = Event(
+            type=EventType.TRUST_UPDATED,
+            payload={"user_id": "u_user"},
+        )
+        ids = _extract_user_ids(event)
+        assert ids == ["u_user"]
+
+    def test_extract_user_ids_dedup(self):
+        """demander_id 和 supplier_id 值相同时应去重。"""
+        event = Event(
+            type=EventType.TASK_COMPLETED,
+            payload={"demander_id": "u1", "supplier_id": "u1"},
+        )
+        ids = _extract_user_ids(event)
+        assert ids == ["u1"]
+
+    def test_extract_user_ids_payload_none(self):
+        """payload=None 应返回空列表。"""
+        event = Event(type=EventType.TASK_COMPLETED, payload=None)
+        ids = _extract_user_ids(event)
+        assert ids == []
+
+    def test_extract_user_ids_filters_non_str_values(self):
+        """非 str 值（None/int）应被过滤掉，不放入 ids。"""
+        event = Event(
+            type=EventType.TASK_COMPLETED,
+            payload={"demander_id": None, "supplier_id": 123, "user_id": "u1"},
+        )
+        ids = _extract_user_ids(event)
+        assert ids == ["u1"]
+
+    def test_bridge_pushes_to_matching_users(self):
+        mgr = MagicMock()
+        mgr.send_to_user = AsyncMock()
+        loop = asyncio.new_event_loop()
+
+        def run_loop():
+            loop.run_forever()
+
+        t = threading.Thread(target=run_loop, daemon=True)
+        t.start()
+        try:
+            bridge = make_ws_event_bridge(mgr, loop)
+            event = Event(
+                type=EventType.TASK_COMPLETED,
+                payload={"task_id": "t1", "demander_id": "u1"},
+            )
+            bridge(event)
+            time.sleep(0.2)  # 等待协程执行
+            mgr.send_to_user.assert_called_once()
+            call_args = mgr.send_to_user.call_args
+            assert call_args[0][0] == "u1"  # 第一个位置参数是 user_id
+            assert call_args[0][1]["type"] == "task.completed"  # 第二个位置参数是 message
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            t.join(timeout=1)
+            loop.close()
+
+    def test_bridge_logs_future_exception(self, caplog):
+        """协程异常应被记录，不应静默吞掉。"""
+        mgr = MagicMock()
+        mgr.send_to_user = AsyncMock(side_effect=RuntimeError("push failed"))
+        loop = asyncio.new_event_loop()
+
+        def run_loop():
+            loop.run_forever()
+
+        t = threading.Thread(target=run_loop, daemon=True)
+        t.start()
+        try:
+            bridge = make_ws_event_bridge(mgr, loop)
+            event = Event(
+                type=EventType.TASK_COMPLETED,
+                payload={"task_id": "t1", "demander_id": "u1"},
+            )
+            with caplog.at_level(logging.WARNING, logger="umcp_core.transport.ws"):
+                bridge(event)
+                time.sleep(0.3)  # 等待协程执行和 done 回调
+            assert any("WS 推送协程异常" in r.message for r in caplog.records)
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            t.join(timeout=2)
             loop.close()
