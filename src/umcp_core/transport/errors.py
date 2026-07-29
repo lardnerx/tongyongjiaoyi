@@ -63,3 +63,46 @@ class MatchFailedError(ApiError):
 class PaymentFailedError(ApiError):
     def __init__(self, code: int = 3002, message: str = "支付失败", status: int = 422, details: Any = None) -> None:
         super().__init__(code, message, status, details)
+
+
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """注册统一异常处理器。"""
+
+    @app.exception_handler(ApiError)
+    async def _handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            content={
+                "code": exc.code,
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": 2003,
+                "message": "参数校验失败",
+                "details": exc.errors(),
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def _handle_unknown(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("未处理异常: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"code": 5000, "message": "服务器内部错误"},
+        )
