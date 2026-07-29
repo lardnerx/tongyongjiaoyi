@@ -855,3 +855,44 @@ plugins/my_industry/
 | `BadgeSystem` | `SkillBadge` | CodeWiki 10.1 |
 
 > 这些别名仅为与设计文档命名保持兼容，行为与等价类完全一致，实际编码建议直接使用主名称。
+
+## 阶段五B：HTTP 传输层（transport/ 子包）
+
+将 UMCPServer 暴露为 FastAPI 应用，提供 RESTful API + WebSocket。
+
+### 目录结构
+
+- `transport/__init__.py`：导出 create_app
+- `transport/app.py`：FastAPI 应用工厂（create_app(server, config)）
+- `transport/config.py`：TransportConfig + from_env
+- `transport/deps.py`：依赖注入（get_current_user / get_server / get_jwt_service）
+- `transport/auth.py`：JwtService（签发/校验/吊销）+ user_from_claims
+- `transport/errors.py`：ApiError 异常体系 + register_exception_handlers
+- `transport/schemas.py`：Pydantic 统一信封 + 分页模型
+- `transport/ws.py`：ConnectionManager + EventBus→WS 桥接
+- `transport/routers/`：8 个资源域 router（auth/tasks/resources/matches/deals/trust/events/health）
+- `transport/__main__.py`：应用入口（python -m umcp_core.transport）
+
+### 启动方式
+
+```bash
+export UMCP_JWT_SECRET=your-secret
+python -m umcp_core.transport
+```
+
+或编程式：
+
+```python
+from umcp_core.server import UMCPServer
+from umcp_core.transport.app import create_app
+from umcp_core.transport.config import TransportConfig
+
+server = UMCPServer()
+server.use_in_memory_repositories()
+server.load_plugin("plugins/ride_hailing/plugin.json")
+server.start()
+
+config = TransportConfig(jwt_secret="secret")
+app = create_app(server, config)
+# 用 uvicorn 启动：uvicorn.run(app, host="0.0.0.0", port=8000)
+```
