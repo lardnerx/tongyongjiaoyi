@@ -16,6 +16,8 @@ class TestEventTypeExtension:
         assert EventType.DEAL_PAID.value == "deal.paid"
         assert EventType.DEAL_COMPLETED.value == "deal.completed"
         assert EventType.DEAL_DISPUTED.value == "deal.disputed"
+        assert EventType.DEAL_CANCELLED.value == "deal.cancelled"
+        assert EventType.DEAL_RESOLVED.value == "deal.resolved"
 
 
 class TestEventBusUnsubscribeAll:

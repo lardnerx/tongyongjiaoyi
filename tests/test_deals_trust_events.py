@@ -245,6 +245,38 @@ class TestDealEventEmission:
         events = [e for e in bus.history() if e.type == EventType.DEAL_DISPUTED]
         assert len(events) == 1
 
+    def test_cancel_emits_deal_cancelled(self):
+        """cancel() 应发布 DEAL_CANCELLED 事件。"""
+        bus = EventBus()
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        deal.bind_event_bus(bus)
+        deal.cancel()
+        events = [e for e in bus.history() if e.type == EventType.DEAL_CANCELLED]
+        assert len(events) == 1
+        assert events[0].payload["deal_id"] == deal.deal_id
+
+    def test_resolve_emits_deal_resolved(self):
+        """resolve() 应发布 DEAL_RESOLVED 事件。"""
+        bus = EventBus()
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        deal.bind_event_bus(bus)
+        deal.activate()
+        deal.open_dispute()
+        deal.resolve(outcome="completed")
+        events = [e for e in bus.history() if e.type == EventType.DEAL_RESOLVED]
+        assert len(events) == 1
+        assert events[0].payload["deal_id"] == deal.deal_id
+
     def test_deal_without_event_bus_is_silent(self):
         """未绑定 event_bus 时，状态变更不应抛异常。"""
         deal = Deal(
@@ -314,3 +346,101 @@ class TestDealRouterEventPublishing:
         paid_events = [e for e in events if e.type.value == "deal.paid"]
         assert len(paid_events) == 1
         assert paid_events[0].payload["deal_id"] == deal_id
+
+
+class TestDealCancelResolveRouter:
+    """deals router 的 cancel/resolve/dispute 端点测试。"""
+
+    def _create_and_activate_deal(self, client, headers) -> str:
+        """创建并激活 deal，返回 deal_id。"""
+        create_resp = client.post(
+            "/api/v1/deals",
+            json={
+                "task_id": "t1",
+                "resource_id": "r1",
+                "demander_id": "d1",
+                "supplier_id": "s1",
+            },
+            headers=headers,
+        )
+        deal_id = create_resp.json()["data"]["deal_id"]
+        client.post(f"/api/v1/deals/{deal_id}/activate", headers=headers)
+        return deal_id
+
+    def test_cancel_deal_endpoint(self):
+        """POST /deals/{id}/cancel 应取消交易并发布事件。"""
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        deal_id = self._create_and_activate_deal(client, headers)
+        server = app.state.server
+        server.event_bus.clear()
+        # 取消
+        resp = client.post(f"/api/v1/deals/{deal_id}/cancel", headers=headers)
+        assert resp.status_code == 200
+        # 验证状态
+        query = client.get(f"/api/v1/deals/{deal_id}", headers=headers)
+        assert query.json()["data"]["status"] == "cancelled"
+        # 验证事件
+        events = server.event_bus.history()
+        cancelled_events = [e for e in events if e.type.value == "deal.cancelled"]
+        assert len(cancelled_events) == 1
+        assert cancelled_events[0].payload["deal_id"] == deal_id
+
+    def test_cancel_terminal_deal_returns_409(self):
+        """对终态交易调用 cancel 应返回 409。"""
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        deal_id = self._create_and_activate_deal(client, headers)
+        # 先完成
+        client.post(f"/api/v1/deals/{deal_id}/complete", headers=headers)
+        # 再取消应 409
+        resp = client.post(f"/api/v1/deals/{deal_id}/cancel", headers=headers)
+        assert resp.status_code == 409
+
+    def test_dispute_then_resolve_deal_endpoint(self):
+        """POST /deals/{id}/dispute → /deals/{id}/resolve 完整争议流程。"""
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        deal_id = self._create_and_activate_deal(client, headers)
+        server = app.state.server
+        server.event_bus.clear()
+        # 发起争议
+        dispute_resp = client.post(f"/api/v1/deals/{deal_id}/dispute", headers=headers)
+        assert dispute_resp.status_code == 200
+        # 解决争议（outcome=completed）
+        resolve_resp = client.post(
+            f"/api/v1/deals/{deal_id}/resolve",
+            json={"outcome": "completed"},
+            headers=headers,
+        )
+        assert resolve_resp.status_code == 200
+        # 验证最终状态
+        query = client.get(f"/api/v1/deals/{deal_id}", headers=headers)
+        assert query.json()["data"]["status"] == "completed"
+        # 验证事件
+        events = server.event_bus.history()
+        disputed_events = [e for e in events if e.type.value == "deal.disputed"]
+        resolved_events = [e for e in events if e.type.value == "deal.resolved"]
+        assert len(disputed_events) == 1
+        assert len(resolved_events) == 1
+
+    def test_resolve_non_disputed_deal_returns_409(self):
+        """对非争议状态交易调用 resolve 应返回 409。"""
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        deal_id = self._create_and_activate_deal(client, headers)
+        # 直接 resolve（未争议）应 409
+        resp = client.post(
+            f"/api/v1/deals/{deal_id}/resolve",
+            json={"outcome": "completed"},
+            headers=headers,
+        )
+        assert resp.status_code == 409

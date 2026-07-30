@@ -71,6 +71,7 @@ class Deal:
         if DealStatus.is_terminal(self.status):
             raise RuntimeError(f"交易已处于终态 {self.status}，无法取消")
         self._transition(DealStatus.CANCELLED)
+        self._emit(self._get_event_type("DEAL_CANCELLED"))
 
     def open_dispute(self) -> None:
         """开启争议。"""
@@ -87,6 +88,7 @@ class Deal:
         if self.status != DealStatus.DISPUTED:
             raise RuntimeError(f"交易状态 {self.status} 不允许解决争议")
         self._transition(DealStatus.RESOLVED)
+        self._emit(self._get_event_type("DEAL_RESOLVED"))
         final = outcome if outcome in (DealStatus.COMPLETED, DealStatus.CANCELLED) else DealStatus.COMPLETED
         self._transition(final)
         if final == DealStatus.COMPLETED:

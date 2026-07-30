@@ -28,6 +28,10 @@ class CreateDealRequest(BaseModel):
     final_amount: float | None = None
 
 
+class ResolveDealRequest(BaseModel):
+    outcome: str = "completed"
+
+
 class DealInfo(BaseModel):
     deal_id: str
     task_id: str
@@ -182,3 +186,42 @@ async def dispute_deal(
         raise IllegalStateError(message=str(e)) from e
     server.deal_repo.save(deal)
     return ok(message="争议已开启")
+
+
+@router.post("/{deal_id}/cancel", response_model=Envelope)
+async def cancel_deal(
+    deal_id: str,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """取消交易。"""
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.cancel()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.deal_repo.save(deal)
+    return ok(message="已取消")
+
+
+@router.post("/{deal_id}/resolve", response_model=Envelope)
+async def resolve_deal(
+    deal_id: str,
+    req: ResolveDealRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """解决争议。"""
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.resolve(outcome=req.outcome)
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.deal_repo.save(deal)
+    return ok(message="争议已解决")

@@ -46,6 +46,8 @@ class EventType(str, Enum):
     DEAL_PAID = "deal.paid"
     DEAL_COMPLETED = "deal.completed"
     DEAL_DISPUTED = "deal.disputed"
+    DEAL_CANCELLED = "deal.cancelled"
+    DEAL_RESOLVED = "deal.resolved"
 
     # 复合任务编排（阶段四C）
     SUBTASK_COMPLETED = "subtask.completed"
