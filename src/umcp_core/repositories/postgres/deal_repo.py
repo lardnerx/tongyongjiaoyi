@@ -54,3 +54,9 @@ class PostgresDealRepository(DealRepository):
             stmt = select(DealModel).where(DealModel.supplier_id == supplier_id)
             models = session.execute(stmt).scalars().all()
             return [deal_from_orm(m) for m in models]
+
+    def list_all(self) -> list[Deal]:
+        with self._session() as session:
+            stmt = select(DealModel)
+            models = session.execute(stmt).scalars().all()
+            return [deal_from_orm(m) for m in models]

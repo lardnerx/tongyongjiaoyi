@@ -71,3 +71,9 @@ class PostgresResourceRepository(ResourceRepository):
             )
             if result.rowcount == 0:
                 raise KeyError(f"资源不存在: {resource_id}")
+
+    def list_all(self) -> list[Resource]:
+        with self._session() as session:
+            stmt = select(ResourceModel)
+            models = session.execute(stmt).scalars().all()
+            return [resource_from_orm(m) for m in models]

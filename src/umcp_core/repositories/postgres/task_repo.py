@@ -128,3 +128,9 @@ class PostgresTaskRepository(TaskRepository):
         deps = dependencies_from_orm(dep_models)
 
         return composite_task_from_orm(model, deps, subtasks)
+
+    def list_all(self) -> list[Task]:
+        with self._session() as session:
+            stmt = select(TaskModel)
+            models = session.execute(stmt).scalars().all()
+            return [self._reconstruct_if_composite(session, m) for m in models]

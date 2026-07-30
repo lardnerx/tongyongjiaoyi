@@ -490,3 +490,45 @@ class TestUMCPServerPostgresIntegration:
         server._postgres_bundle = pg_bundle
         server.dispose()
         assert not hasattr(server, "_postgres_bundle")
+
+
+class TestPostgresListAll:
+    def test_task_list_all(self, pg_bundle):
+        from umcp_core.core.task import StandardTask
+        t1 = StandardTask(demander_id="u1", domain_tag=DomainTag.of("ride"))
+        t2 = StandardTask(demander_id="u2", domain_tag=DomainTag.of("design"))
+        pg_bundle.task_repo.save(t1)
+        pg_bundle.task_repo.save(t2)
+        result = pg_bundle.task_repo.list_all()
+        task_ids = {t.task_id for t in result}
+        assert t1.task_id in task_ids
+        assert t2.task_id in task_ids
+
+    def test_task_list_all_empty(self, pg_bundle):
+        result = pg_bundle.task_repo.list_all()
+        assert result == []
+
+    def test_resource_list_all(self, pg_bundle):
+        from umcp_core.core.resource import Resource
+        class _R(Resource):
+            def resource_type(self) -> str:
+                return "test"
+        r1 = _R(supplier_id="s1", domain_tag=DomainTag.of("ride"))
+        r2 = _R(supplier_id="s2", domain_tag=DomainTag.of("design"))
+        pg_bundle.resource_repo.save(r1)
+        pg_bundle.resource_repo.save(r2)
+        result = pg_bundle.resource_repo.list_all()
+        resource_ids = {r.resource_id for r in result}
+        assert r1.resource_id in resource_ids
+        assert r2.resource_id in resource_ids
+
+    def test_deal_list_all(self, pg_bundle):
+        from umcp_core.core.deal import Deal
+        d1 = Deal(task_id="t1", resource_id="r1", demander_id="u1", supplier_id="s1")
+        d2 = Deal(task_id="t2", resource_id="r2", demander_id="u2", supplier_id="s2")
+        pg_bundle.deal_repo.save(d1)
+        pg_bundle.deal_repo.save(d2)
+        result = pg_bundle.deal_repo.list_all()
+        deal_ids = {d.deal_id for d in result}
+        assert d1.deal_id in deal_ids
+        assert d2.deal_id in deal_ids
