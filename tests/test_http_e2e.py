@@ -243,3 +243,59 @@ class TestListEndpoints:
         body = resp.json()
         assert body["code"] == 0
         assert body["data"]["total"] >= 1
+
+
+class TestHealthReadyEnhanced:
+    """/health/ready 应包含 DB 连通性检查。"""
+
+    def test_ready_in_memory_mode(self):
+        """内存仓储模式下，db_connected 应为 'in-memory'，ready 为 True。"""
+        client = _make_client()
+        # _make_client 的 server 未调用 start()（缺组件无法通过校验），
+        # 直接标记为已启动以验证 /health/ready 逻辑
+        client.app.state.server._started = True
+        token = _login(client)
+        resp = client.get(
+            "/api/v1/health/ready",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["ready"] is True
+        assert data["components"]["db_connected"] == "in-memory"
+        assert data["components"]["server_running"] is True
+        assert data["components"]["task_repo"] is True
+
+    def test_ready_pg_mode_db_failure(self, monkeypatch):
+        """PG 模式下 DB 查询失败时，db_connected 应为 False，ready 为 False。"""
+        from umcp_core.transport.app import create_app
+        from umcp_core.transport.config import TransportConfig
+        from umcp_core.server import UMCPServer
+        from fastapi.testclient import TestClient
+
+        # 构造一个带 _postgres_bundle 属性的 server（模拟 PG 模式）
+        server = UMCPServer()
+        server.use_in_memory_repositories()
+        server.set_auth_provider(PhoneAuthProvider())
+        server.register_match_strategy("ride", _StubMatchStrategy())
+        # 缺 payment_schema/trust_engine 无法通过 start() 校验，直接标记已启动
+        server._started = True
+        # 模拟 PG 模式标记
+        object.__setattr__(server, "_postgres_bundle", object())
+        # 让 task_repo.list_all 抛异常模拟 DB 不通
+        def _raise():
+            raise RuntimeError("DB connection lost")
+        monkeypatch.setattr(server.task_repo, "list_all", _raise)
+
+        config = TransportConfig(jwt_secret="test-secret")
+        app = create_app(server, config)
+        client = TestClient(app)
+        token = _login(client)
+        resp = client.get(
+            "/api/v1/health/ready",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["ready"] is False
+        assert data["components"]["db_connected"] is False
