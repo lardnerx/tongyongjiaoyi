@@ -54,6 +54,8 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
         if ws_bridge_ref["bridge"]:
             server.event_bus.unsubscribe_all(ws_bridge_ref["bridge"])
         await ws_manager.disconnect_all()
+        server.stop()
+        server.dispose()
         logger.info("UMCP HTTP 服务已停止")
 
     app = FastAPI(

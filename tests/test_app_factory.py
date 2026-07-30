@@ -100,3 +100,31 @@ class TestAppFactory:
         with pytest.raises(Exception):
             with client.websocket_connect("/api/v1/ws/events?token=invalid"):
                 pass
+
+
+class TestLifespanResourceRelease:
+    """验证 lifespan shutdown 释放 server 资源。"""
+
+    def test_shutdown_calls_server_stop_and_dispose(self):
+        """lifespan 结束时应调用 server.stop() 和 server.dispose()。"""
+        from umcp_core.layers.l1 import PhoneAuthProvider
+        from umcp_core.server import UMCPServer
+        from umcp_core.transport.app import create_app
+        from umcp_core.transport.config import TransportConfig
+
+        server = UMCPServer()
+        server.use_in_memory_repositories()
+        server.set_auth_provider(PhoneAuthProvider())
+        config = TransportConfig(jwt_secret="test-secret")
+        app = create_app(server, config)
+
+        # 记录 dispose 调用次数（in-memory 模式 dispose 是 no-op，但方法应被调用）
+        # 通过 mock 跟踪
+        import unittest.mock as mock
+        with mock.patch.object(server, "stop") as m_stop, \
+             mock.patch.object(server, "dispose") as m_dispose:
+            with TestClient(app):
+                # 启动并立即退出，触发 lifespan shutdown
+                pass
+            m_stop.assert_called_once()
+            m_dispose.assert_called_once()
