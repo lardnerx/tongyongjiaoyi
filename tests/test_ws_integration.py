@@ -56,35 +56,65 @@ def _login(client: TestClient) -> str:
 
 
 class TestWsEventPush:
-    def test_ws_connection_and_event_history(self):
-        """WS 连接成功 + 触发事件后历史中有事件。
+    def test_ws_receives_task_published_event(self):
+        """创建任务后，WS 客户端应收到 task.published 推送。
 
-        注意：当前 Task._emit 发布的事件 payload 仅含 task_id，不含 demander_id，
-        因此 WS 桥接函数 _extract_user_ids 返回空列表，不会触发实际推送。
-        此测试验证 WS 连接成功 + 事件已发布到 EventBus 历史（推送机制由
-        test_ws_manager.py 的 TestEventBridge 单元测试覆盖）。
+        依赖：Task._emit payload 已补 demander_id（任务 9），
+        使 WS 桥接函数 _extract_user_ids 能匹配到 user_id。
+        用 with TestClient(app) as client 启动 lifespan，使 WS 桥接 bridge 注册到 event_bus。
         """
         import jwt as pyjwt
 
         app, server = _make_app()
-        client = TestClient(app)
-        token = _login(client)
+        with TestClient(app) as client:
+            token = _login(client)
 
-        # 解码 JWT 获取真实 user_id（PhoneAuthProvider 生成随机 user_id，非手机号）
-        payload = pyjwt.decode(token, "ws-test-secret", algorithms=["HS256"])
-        user_id = payload["sub"]
+            # 解码 JWT 获取真实 user_id
+            payload = pyjwt.decode(token, "ws-test-secret", algorithms=["HS256"])
+            user_id = payload["sub"]
 
-        with client.websocket_connect(f"/api/v1/ws/events?token={token}") as ws:
-            # 连接成功；用真实 user_id 作为 demander_id 创建任务
-            client.post(
-                "/api/v1/tasks",
-                json={"demander_id": user_id, "domain_tag": "ride"},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            # 验证事件已发布到 EventBus
-            events = server.event_bus.history()
-            types = [e.type.value for e in events]
-            assert "task.published" in types
+            with client.websocket_connect(f"/api/v1/ws/events?token={token}") as ws:
+                # 用真实 user_id 作为 demander_id 创建任务，使 WS 能匹配
+                client.post(
+                    "/api/v1/tasks",
+                    json={"demander_id": user_id, "domain_tag": "ride"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                # 应收到 task.published 推送
+                msg = ws.receive_json()
+                assert msg["type"] == "task.published"
+                assert msg["data"]["task_id"]
+                assert msg["data"]["demander_id"] == user_id
+
+    def test_ws_receives_deal_created_event(self):
+        """创建交易后，相关用户应收到 deal.created 推送。
+
+        用 with TestClient(app) as client 启动 lifespan，使 WS 桥接 bridge 注册到 event_bus。
+        """
+        import jwt as pyjwt
+
+        app, server = _make_app()
+        with TestClient(app) as client:
+            token = _login(client)
+            payload = pyjwt.decode(token, "ws-test-secret", algorithms=["HS256"])
+            user_id = payload["sub"]
+
+            with client.websocket_connect(f"/api/v1/ws/events?token={token}") as ws:
+                # 创建 deal，demander_id 设为当前 user_id
+                client.post(
+                    "/api/v1/deals",
+                    json={
+                        "task_id": "t1",
+                        "resource_id": "res_1",
+                        "demander_id": user_id,
+                        "supplier_id": "supplier_1",
+                    },
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                msg = ws.receive_json()
+                assert msg["type"] == "deal.created"
+                assert msg["data"]["deal_id"]
+                assert msg["data"]["demander_id"] == user_id
 
     def test_ws_rejects_connection_without_token(self):
         """无 token 连接 WS 应被拒绝。"""
