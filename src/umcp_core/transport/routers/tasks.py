@@ -83,15 +83,11 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
 ) -> Envelope[PaginatedData[TaskInfo]]:
     """查询任务列表。"""
+    tasks = server.task_repo.list_all()
     if status:
-        domain = DomainTag.of(domain_tag) if domain_tag else None
-        tasks = server.task_repo.find_by_status(status, domain)
-    else:
-        # 全量查询（内存仓储无全量方法，用 find_by_demander 兜底或遍历）
-        # 简化：若 domain_tag 提供，按 domain 过滤；否则返回全部（内存仓储有 _tasks）
-        tasks = list(getattr(server.task_repo, "_tasks", {}).values())
-        if domain_tag:
-            tasks = [t for t in tasks if t.domain_tag.value == domain_tag]
+        tasks = [t for t in tasks if t.status == status]
+    if domain_tag:
+        tasks = [t for t in tasks if t.domain_tag.value == domain_tag]
 
     total = len(tasks)
     start = (page - 1) * size

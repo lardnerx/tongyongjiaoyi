@@ -77,7 +77,7 @@ async def list_deals(
     current_user: User = Depends(get_current_user),
 ) -> Envelope[PaginatedData[DealInfo]]:
     """查询交易列表。"""
-    all_deals = list(getattr(server.deal_repo, "_deals", {}).values())
+    all_deals = server.deal_repo.list_all()
     if task_id:
         all_deals = [d for d in all_deals if d.task_id == task_id]
     if supplier_id:

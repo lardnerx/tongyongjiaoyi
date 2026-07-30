@@ -103,8 +103,7 @@ async def list_resources(
     current_user: User = Depends(get_current_user),
 ) -> Envelope[PaginatedData[ResourceInfo]]:
     """查询资源列表。"""
-    # 内存仓储无全量查询接口，直接遍历
-    all_resources = list(getattr(server.resource_repo, "_resources", {}).values())
+    all_resources = server.resource_repo.list_all()
     if domain_tag:
         all_resources = [r for r in all_resources if r.domain_tag.value == domain_tag]
     if status:
