@@ -60,6 +60,10 @@ class InMemoryTaskRepository(TaskRepository):
                 raise KeyError(f"任务不存在: {task_id}")
             task.status = new_status
 
+    def list_all(self) -> list[Task]:
+        with self._lock:
+            return list(self._tasks.values())
+
 
 class InMemoryResourceRepository(ResourceRepository):
     def __init__(self) -> None:
@@ -94,6 +98,10 @@ class InMemoryResourceRepository(ResourceRepository):
                 raise KeyError(f"资源不存在: {resource_id}")
             resource.status = new_status
 
+    def list_all(self) -> list[Resource]:
+        with self._lock:
+            return list(self._resources.values())
+
 
 class InMemoryDealRepository(DealRepository):
     def __init__(self) -> None:
@@ -116,6 +124,10 @@ class InMemoryDealRepository(DealRepository):
     def find_by_supplier(self, supplier_id: str) -> list[Deal]:
         with self._lock:
             return [d for d in self._deals.values() if d.supplier_id == supplier_id]
+
+    def list_all(self) -> list[Deal]:
+        with self._lock:
+            return list(self._deals.values())
 
 
 class InMemoryUserRepository(UserRepository):

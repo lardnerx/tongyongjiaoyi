@@ -42,6 +42,11 @@ class TaskRepository(ABC):
     def update_status(self, task_id: str, new_status: str) -> None:
         ...
 
+    @abstractmethod
+    def list_all(self) -> list[Task]:
+        """返回所有任务（router 层负责过滤）。"""
+        ...
+
 
 class ResourceRepository(ABC):
     """资源仓储接口。"""
@@ -66,6 +71,11 @@ class ResourceRepository(ABC):
     def update_status(self, resource_id: str, new_status: str) -> None:
         ...
 
+    @abstractmethod
+    def list_all(self) -> list[Resource]:
+        """返回所有资源（router 层负责过滤）。"""
+        ...
+
 
 class DealRepository(ABC):
     """交易仓储接口。"""
@@ -84,6 +94,11 @@ class DealRepository(ABC):
 
     @abstractmethod
     def find_by_supplier(self, supplier_id: str) -> list[Deal]:
+        ...
+
+    @abstractmethod
+    def list_all(self) -> list[Deal]:
+        """返回所有交易（router 层负责过滤）。"""
         ...
 
 

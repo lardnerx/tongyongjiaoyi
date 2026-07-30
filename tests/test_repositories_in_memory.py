@@ -179,6 +179,27 @@ class TestInMemoryTaskRepository:
         with pytest.raises(KeyError, match="任务不存在"):
             repo.update_status("ghost", TaskStatus.MATCHING)
 
+    def test_list_all_returns_all_tasks(self):
+        repo = InMemoryTaskRepository()
+        t1 = _make_task(demander_id="d1")
+        t2 = _make_task(demander_id="d2")
+        repo.save(t1)
+        repo.save(t2)
+        result = repo.list_all()
+        assert {t.task_id for t in result} == {t1.task_id, t2.task_id}
+
+    def test_list_all_empty(self):
+        repo = InMemoryTaskRepository()
+        assert repo.list_all() == []
+
+    def test_list_all_returns_copy(self):
+        """list_all 返回的列表应是副本，外部修改不影响内部状态。"""
+        repo = InMemoryTaskRepository()
+        repo.save(_make_task())
+        result = repo.list_all()
+        result.clear()
+        assert len(repo.list_all()) == 1
+
 
 # ----------------------------------------------------------------------
 # InMemoryResourceRepository
@@ -234,6 +255,19 @@ class TestInMemoryResourceRepository:
         with pytest.raises(KeyError, match="资源不存在"):
             repo.update_status("ghost", ResourceStatus.BUSY)
 
+    def test_list_all_returns_all_resources(self):
+        repo = InMemoryResourceRepository()
+        r1 = _make_resource(supplier_id="s1")
+        r2 = _make_resource(supplier_id="s2")
+        repo.save(r1)
+        repo.save(r2)
+        result = repo.list_all()
+        assert {r.resource_id for r in result} == {r1.resource_id, r2.resource_id}
+
+    def test_list_all_empty(self):
+        repo = InMemoryResourceRepository()
+        assert repo.list_all() == []
+
 
 # ----------------------------------------------------------------------
 # InMemoryDealRepository
@@ -270,6 +304,19 @@ class TestInMemoryDealRepository:
         repo.save(d2)
         result = repo.find_by_supplier("s1")
         assert [d.deal_id for d in result] == [d1.deal_id]
+
+    def test_list_all_returns_all_deals(self):
+        repo = InMemoryDealRepository()
+        d1 = _make_deal(task_id="t1")
+        d2 = _make_deal(task_id="t2")
+        repo.save(d1)
+        repo.save(d2)
+        result = repo.list_all()
+        assert {d.deal_id for d in result} == {d1.deal_id, d2.deal_id}
+
+    def test_list_all_empty(self):
+        repo = InMemoryDealRepository()
+        assert repo.list_all() == []
 
 
 # ----------------------------------------------------------------------
