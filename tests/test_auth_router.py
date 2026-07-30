@@ -186,3 +186,52 @@ class TestRefresh:
         )
         assert resp.status_code == 401
         assert resp.json()["code"] == 1001
+
+    def test_refresh_rotates_old_refresh_token(self):
+        """refresh 后旧 refresh token 应失效（token 轮换）。"""
+        app = _make_app()
+        client = TestClient(app)
+        login_resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13800000000"},
+        )
+        old_refresh = login_resp.json()["data"]["refresh_token"]
+        # 第一次 refresh：成功
+        resp1 = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": old_refresh},
+        )
+        assert resp1.status_code == 200
+        new_tokens = resp1.json()["data"]
+        assert "access_token" in new_tokens
+        assert "refresh_token" in new_tokens
+        # 第二次 refresh 用旧 refresh token：应 401（已被吊销）
+        resp2 = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": old_refresh},
+        )
+        assert resp2.status_code == 401
+        assert resp2.json()["code"] == 1001
+
+    def test_refresh_new_token_pair_has_refresh_jti_link(self):
+        """refresh 签发的新 access token 仍嵌入新 refresh 的 jti。"""
+        app = _make_app()
+        client = TestClient(app)
+        login_resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13800000000"},
+        )
+        old_refresh = login_resp.json()["data"]["refresh_token"]
+        resp = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": old_refresh},
+        )
+        new_tokens = resp.json()["data"]
+        import jwt as pyjwt
+        access_payload = pyjwt.decode(
+            new_tokens["access_token"], "test-secret", algorithms=["HS256"]
+        )
+        refresh_payload = pyjwt.decode(
+            new_tokens["refresh_token"], "test-secret", algorithms=["HS256"]
+        )
+        assert access_payload["refresh_jti"] == refresh_payload["jti"]

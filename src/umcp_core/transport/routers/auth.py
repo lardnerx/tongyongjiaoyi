@@ -63,13 +63,20 @@ async def refresh(
     req: RefreshRequest,
     jwt_service: JwtService = Depends(get_jwt_service),
 ) -> Envelope[TokenResponse]:
-    """用 refresh_token 换新 access_token。"""
+    """用 refresh_token 换新 access_token，并吊销旧 refresh_token（轮换）。"""
     try:
         payload = jwt_service.decode(req.refresh_token)
     except pyjwt.InvalidTokenError as e:
         raise InvalidCredentialError(message=f"refresh token 无效: {e}") from e
     if payload.get("type") != "refresh":
         raise InvalidCredentialError(message="非 refresh token")
+    if jwt_service.is_revoked(payload.get("jti", "")):
+        raise InvalidCredentialError(message="refresh token 已吊销")
+
+    # 吊销旧 refresh token（token 轮换，防止重放）
+    old_jti = payload.get("jti")
+    if old_jti:
+        jwt_service.revoke(old_jti)
 
     # 重建 User 并签发新 token 对
     user = user_from_claims(payload)
