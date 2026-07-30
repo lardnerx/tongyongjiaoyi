@@ -118,13 +118,10 @@ class TestLifespanResourceRelease:
         config = TransportConfig(jwt_secret="test-secret")
         app = create_app(server, config)
 
-        # 记录 dispose 调用次数（in-memory 模式 dispose 是 no-op，但方法应被调用）
-        # 通过 mock 跟踪
         import unittest.mock as mock
         with mock.patch.object(server, "stop") as m_stop, \
              mock.patch.object(server, "dispose") as m_dispose:
             with TestClient(app):
-                # 启动并立即退出，触发 lifespan shutdown
                 pass
             m_stop.assert_called_once()
             m_dispose.assert_called_once()
