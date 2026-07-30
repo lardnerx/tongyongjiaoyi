@@ -27,6 +27,11 @@ class TransportConfig:
     log_level: str = "INFO"
     host: str = "0.0.0.0"
     port: int = 8000
+    # DB 连接池参数
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_recycle: int = 3600
+    db_pool_timeout: int = 30
 
     @classmethod
     def from_env(cls) -> "TransportConfig":
@@ -47,4 +52,8 @@ class TransportConfig:
             log_level=os.getenv("UMCP_LOG_LEVEL", "INFO"),
             host=os.getenv("UMCP_HOST", "0.0.0.0"),
             port=_env_int("UMCP_PORT", 8000),
+            db_pool_size=_env_int("UMCP_DB_POOL_SIZE", 10),
+            db_max_overflow=_env_int("UMCP_DB_MAX_OVERFLOW", 20),
+            db_pool_recycle=_env_int("UMCP_DB_POOL_RECYCLE", 3600),
+            db_pool_timeout=_env_int("UMCP_DB_POOL_TIMEOUT", 30),
         )

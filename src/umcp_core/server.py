@@ -120,18 +120,35 @@ class UMCPServer:
     # ------------------------------------------------------------------
 
     def use_postgres_repositories(
-        self, dsn: str, echo: bool = False
+        self,
+        dsn: str,
+        echo: bool = False,
+        pool_size: int = 10,
+        max_overflow: int = 20,
+        pool_recycle: int = 3600,
+        pool_timeout: int = 30,
     ) -> PostgresRepositoryBundle:
         """使用 PostgreSQL 仓储（生产环境）。
 
         Args:
             dsn: PostgreSQL 连接字符串
             echo: 是否打印 SQL（调试用）
+            pool_size: 连接池常驻大小
+            max_overflow: 连接池溢出上限
+            pool_recycle: 连接回收周期（秒）
+            pool_timeout: 获取连接超时（秒）
 
         Returns:
             PostgresRepositoryBundle 实例，可用于 dispose 或直接访问仓储
         """
-        bundle = PostgresRepositoryBundle(dsn, echo)
+        bundle = PostgresRepositoryBundle(
+            dsn,
+            echo,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle,
+            pool_timeout=pool_timeout,
+        )
         self.task_repo = bundle.task_repo
         self.resource_repo = bundle.resource_repo
         self.deal_repo = bundle.deal_repo

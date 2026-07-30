@@ -23,7 +23,13 @@ def main() -> None:
     config = TransportConfig.from_env()
     server = UMCPServer()
     if config.db_dsn:
-        server.use_postgres_repositories(config.db_dsn)
+        server.use_postgres_repositories(
+            config.db_dsn,
+            pool_size=config.db_pool_size,
+            max_overflow=config.db_max_overflow,
+            pool_recycle=config.db_pool_recycle,
+            pool_timeout=config.db_pool_timeout,
+        )
     else:
         server.use_in_memory_repositories()
     server.start()

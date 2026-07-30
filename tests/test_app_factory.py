@@ -146,3 +146,78 @@ class TestLoggingSetup:
         # 模拟 logging.conf 不存在的路径
         monkeypatch.setattr(app_module, "_LOG_CONF_PATH", tmp_path / "nonexistent.conf")
         app_module._setup_logging()  # 不抛异常即通过
+
+
+class TestDbPoolConfig:
+    """验证 TransportConfig 加载 DB 连接池参数。"""
+
+    def test_from_env_loads_pool_params_with_defaults(self, monkeypatch):
+        """未设置环境变量时，连接池参数应有合理默认值。"""
+        from umcp_core.transport.config import TransportConfig
+
+        monkeypatch.setenv("UMCP_JWT_SECRET", "test-secret")
+        # 清理可能存在的环境变量
+        for var in ("UMCP_DB_DSN", "UMCP_DB_POOL_SIZE", "UMCP_DB_MAX_OVERFLOW",
+                    "UMCP_DB_POOL_RECYCLE", "UMCP_DB_POOL_TIMEOUT"):
+            monkeypatch.delenv(var, raising=False)
+
+        config = TransportConfig.from_env()
+        assert config.db_pool_size == 10
+        assert config.db_max_overflow == 20
+        assert config.db_pool_recycle == 3600
+        assert config.db_pool_timeout == 30
+
+    def test_from_env_loads_custom_pool_params(self, monkeypatch):
+        """环境变量应覆盖连接池参数默认值。"""
+        from umcp_core.transport.config import TransportConfig
+
+        monkeypatch.setenv("UMCP_JWT_SECRET", "test-secret")
+        monkeypatch.setenv("UMCP_DB_POOL_SIZE", "20")
+        monkeypatch.setenv("UMCP_DB_MAX_OVERFLOW", "40")
+        monkeypatch.setenv("UMCP_DB_POOL_RECYCLE", "1800")
+        monkeypatch.setenv("UMCP_DB_POOL_TIMEOUT", "60")
+
+        config = TransportConfig.from_env()
+        assert config.db_pool_size == 20
+        assert config.db_max_overflow == 40
+        assert config.db_pool_recycle == 1800
+        assert config.db_pool_timeout == 60
+
+    def test_bundle_passes_pool_params_to_engine(self, monkeypatch):
+        """PostgresRepositoryBundle 应将连接池参数传给 create_engine。"""
+        from umcp_core.repositories.postgres import bundle as bundle_module
+
+        captured: dict = {}
+
+        class _FakeEngine:
+            def dispose(self):
+                pass
+
+        def _fake_create_engine(dsn, **kwargs):
+            captured["dsn"] = dsn
+            captured["kwargs"] = kwargs
+            return _FakeEngine()
+
+        class _FakeBase:
+            class metadata:
+                @staticmethod
+                def create_all(engine):
+                    pass
+
+        monkeypatch.setattr(bundle_module, "create_engine", _fake_create_engine)
+        monkeypatch.setattr(bundle_module, "Base", _FakeBase)
+
+        bundle_module.PostgresRepositoryBundle(
+            "postgresql://user:pass@host:5432/db",
+            pool_size=25,
+            max_overflow=50,
+            pool_recycle=900,
+            pool_timeout=45,
+        )
+
+        assert captured["dsn"] == "postgresql://user:pass@host:5432/db"
+        assert captured["kwargs"]["pool_size"] == 25
+        assert captured["kwargs"]["max_overflow"] == 50
+        assert captured["kwargs"]["pool_recycle"] == 900
+        assert captured["kwargs"]["pool_timeout"] == 45
+        assert captured["kwargs"]["pool_pre_ping"] is True

@@ -24,15 +24,23 @@ class PostgresRepositoryBundle:
         server.use_postgres_repositories("postgresql://...")
     """
 
-    def __init__(self, dsn: str, echo: bool = False) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        echo: bool = False,
+        pool_size: int = 10,
+        max_overflow: int = 20,
+        pool_recycle: int = 3600,
+        pool_timeout: int = 30,
+    ) -> None:
         self.engine = create_engine(
             dsn,
             echo=echo,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-            pool_recycle=3600,
-            pool_timeout=30,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle,
+            pool_timeout=pool_timeout,
         )
         self.SessionFactory = sessionmaker(bind=self.engine, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
