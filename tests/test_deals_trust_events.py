@@ -257,3 +257,60 @@ class TestDealEventEmission:
         deal.activate()
         deal.complete()
         # 无异常即通过
+
+
+class TestDealRouterEventPublishing:
+    """deals router 应在创建交易时发布 DEAL_CREATED 事件。"""
+
+    def test_create_deal_emits_deal_created_event(self):
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        # 从 app.state.server 拿到 event_bus 引用
+        server = app.state.server
+        # 创建 deal
+        resp = client.post(
+            "/api/v1/deals",
+            json={
+                "task_id": "t1",
+                "resource_id": "r1",
+                "demander_id": "d1",
+                "supplier_id": "s1",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        # 验证 DEAL_CREATED 事件已发布
+        events = server.event_bus.history()
+        created_events = [e for e in events if e.type.value == "deal.created"]
+        assert len(created_events) == 1
+        assert created_events[0].payload["task_id"] == "t1"
+        assert created_events[0].payload["demander_id"] == "d1"
+
+    def test_activate_deal_emits_deal_paid_event(self):
+        app = _make_app()
+        client = TestClient(app)
+        token = _login_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        # 创建 deal
+        create_resp = client.post(
+            "/api/v1/deals",
+            json={
+                "task_id": "t1",
+                "resource_id": "r1",
+                "demander_id": "d1",
+                "supplier_id": "s1",
+            },
+            headers=headers,
+        )
+        deal_id = create_resp.json()["data"]["deal_id"]
+        server = app.state.server
+        # 激活前清空 history 便于断言
+        server.event_bus.clear()
+        # 激活
+        client.post(f"/api/v1/deals/{deal_id}/activate", headers=headers)
+        events = server.event_bus.history()
+        paid_events = [e for e in events if e.type.value == "deal.paid"]
+        assert len(paid_events) == 1
+        assert paid_events[0].payload["deal_id"] == deal_id

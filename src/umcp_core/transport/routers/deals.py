@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 from umcp_core.core.base import User
 from umcp_core.core.deal import Deal
+from umcp_core.events.bus import Event
+from umcp_core.events.types import EventType
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
 from umcp_core.transport.errors import IllegalStateError, NotFoundError
@@ -62,7 +64,22 @@ async def create_deal(
         supplier_id=req.supplier_id,
         final_amount=req.final_amount,
     )
+    deal.bind_event_bus(server.event_bus)
     server.deal_repo.save(deal)
+    # 发布 DEAL_CREATED 事件（构造时无 event_bus，由 router 显式发布）
+    server.event_bus.publish(
+        Event(
+            type=EventType.DEAL_CREATED,
+            source_layer="L4",
+            payload={
+                "deal_id": deal.deal_id,
+                "task_id": deal.task_id,
+                "resource_id": deal.resource_id,
+                "demander_id": deal.demander_id,
+                "supplier_id": deal.supplier_id,
+            },
+        )
+    )
     return ok(_deal_to_info(deal))
 
 
@@ -120,6 +137,7 @@ async def activate_deal(
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
     try:
         deal.activate()
     except (RuntimeError, ValueError) as e:
@@ -138,6 +156,7 @@ async def complete_deal(
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
     try:
         deal.complete()
     except (RuntimeError, ValueError) as e:
@@ -156,6 +175,7 @@ async def dispute_deal(
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
     try:
         deal.open_dispute()
     except (RuntimeError, ValueError) as e:
