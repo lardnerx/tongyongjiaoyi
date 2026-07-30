@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from umcp_core.core.domain import DomainTag
 from umcp_core.core.deal import Deal, DealStatus
 from umcp_core.core.resource import Resource, ResourceStatus
+from umcp_core.events.bus import EventBus
+from umcp_core.events.types import EventType
 from umcp_core.layers.l1 import PhoneAuthProvider
 from umcp_core.layers.l3 import InstantMatch, MatchResult
 from umcp_core.server import UMCPServer
@@ -193,3 +195,65 @@ class TestEvents:
         assert resp.status_code == 200
         body = resp.json()["data"]
         assert body["total"] >= 1
+
+
+class TestDealEventEmission:
+    """Deal 状态变更应通过 EventBus 发布对应事件。"""
+
+    def test_activate_emits_deal_paid(self):
+        bus = EventBus()
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        deal.bind_event_bus(bus)
+        deal.activate()
+        events = [e for e in bus.history() if e.type == EventType.DEAL_PAID]
+        assert len(events) == 1
+        assert events[0].payload["deal_id"] == deal.deal_id
+        assert events[0].payload["task_id"] == "t1"
+        assert events[0].payload["demander_id"] == "d1"
+        assert events[0].payload["supplier_id"] == "s1"
+
+    def test_complete_emits_deal_completed(self):
+        bus = EventBus()
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        deal.bind_event_bus(bus)
+        deal.activate()
+        deal.complete()
+        events = [e for e in bus.history() if e.type == EventType.DEAL_COMPLETED]
+        assert len(events) == 1
+
+    def test_open_dispute_emits_deal_disputed(self):
+        bus = EventBus()
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        deal.bind_event_bus(bus)
+        deal.activate()
+        deal.open_dispute()
+        events = [e for e in bus.history() if e.type == EventType.DEAL_DISPUTED]
+        assert len(events) == 1
+
+    def test_deal_without_event_bus_is_silent(self):
+        """未绑定 event_bus 时，状态变更不应抛异常。"""
+        deal = Deal(
+            task_id="t1",
+            resource_id="r1",
+            demander_id="d1",
+            supplier_id="s1",
+        )
+        # 不调用 bind_event_bus
+        deal.activate()
+        deal.complete()
+        # 无异常即通过

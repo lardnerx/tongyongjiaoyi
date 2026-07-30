@@ -53,15 +53,18 @@ class Deal:
         self.matched_at: datetime = datetime.utcnow()
         self.completed_at: datetime | None = None
         self.metadata: dict[str, Any] = metadata or {}
+        self._event_bus = None  # type: ignore[assignment]
 
     def activate(self) -> None:
         """匹配确认后激活。"""
         self._transition(DealStatus.ACTIVE)
+        self._emit(self._get_event_type("DEAL_PAID"))
 
     def complete(self) -> None:
         """完成交易。"""
         self._transition(DealStatus.COMPLETED)
         self.completed_at = datetime.utcnow()
+        self._emit(self._get_event_type("DEAL_COMPLETED"))
 
     def cancel(self) -> None:
         """取消交易。"""
@@ -74,6 +77,7 @@ class Deal:
         if self.status not in (DealStatus.ACTIVE, DealStatus.COMPLETED):
             raise RuntimeError(f"交易状态 {self.status} 不允许开启争议")
         self._transition(DealStatus.DISPUTED)
+        self._emit(self._get_event_type("DEAL_DISPUTED"))
 
     def resolve(self, outcome: str = "completed") -> None:
         """解决争议。
@@ -93,6 +97,35 @@ class Deal:
 
         DealStateMachine().validate_transition(self.status, new_status)
         self.status = new_status
+
+    def bind_event_bus(self, bus: "EventBus") -> None:
+        """绑定事件总线。"""
+        self._event_bus = bus
+
+    def _get_event_type(self, name: str):
+        """延迟导入 EventType，避免循环依赖。"""
+        from umcp_core.events.types import EventType
+        return getattr(EventType, name)
+
+    def _emit(self, event_type, payload: dict[str, Any] | None = None) -> None:
+        """发布事件。未绑定 event_bus 时静默返回。"""
+        if self._event_bus is None:
+            return
+        from umcp_core.events.bus import Event
+
+        self._event_bus.publish(
+            Event(
+                type=event_type,
+                source_layer="L4",
+                payload={
+                    "deal_id": self.deal_id,
+                    "task_id": self.task_id,
+                    "demander_id": self.demander_id,
+                    "supplier_id": self.supplier_id,
+                    **(payload or {}),
+                },
+            )
+        )
 
     def __repr__(self) -> str:
         return (
