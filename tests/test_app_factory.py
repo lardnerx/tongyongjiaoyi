@@ -125,3 +125,24 @@ class TestLifespanResourceRelease:
                 pass
             m_stop.assert_called_once()
             m_dispose.assert_called_once()
+
+
+class TestLoggingSetup:
+    """验证 _setup_logging 加载 logging.conf。"""
+
+    def test_setup_logging_loads_config_when_exists(self):
+        """logging.conf 存在时，_setup_logging 应配置 umcp_core logger。"""
+        import logging
+        from umcp_core.transport.app import _setup_logging
+
+        _setup_logging()
+        logger = logging.getLogger("umcp_core")
+        assert logger.level == logging.INFO
+
+    def test_setup_logging_no_raise_when_config_absent(self, tmp_path, monkeypatch):
+        """logging.conf 不存在时，_setup_logging 不应抛异常。"""
+        from umcp_core.transport import app as app_module
+
+        # 模拟 logging.conf 不存在的路径
+        monkeypatch.setattr(app_module, "_LOG_CONF_PATH", tmp_path / "nonexistent.conf")
+        app_module._setup_logging()  # 不抛异常即通过

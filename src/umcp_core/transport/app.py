@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import logging.config
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +23,14 @@ from umcp_core.transport.ws import ConnectionManager, make_ws_event_bridge
 
 logger = logging.getLogger(__name__)
 
+_LOG_CONF_PATH = Path(__file__).resolve().parent.parent.parent.parent / "logging.conf"
+
+
+def _setup_logging() -> None:
+    """加载统一日志配置（若 logging.conf 存在）。"""
+    if _LOG_CONF_PATH.exists():
+        logging.config.fileConfig(_LOG_CONF_PATH, disable_existing_loggers=False)
+
 
 def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     """创建 FastAPI 应用。
@@ -32,6 +42,7 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     Returns:
         FastAPI 应用实例
     """
+    _setup_logging()
     jwt_service = JwtService(
         secret=config.jwt_secret,
         access_ttl=config.jwt_access_ttl,
