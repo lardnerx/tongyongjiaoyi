@@ -16,5 +16,27 @@ services:
       timeout: 3s
       retries: 5
 
+  app:
+    build: .
+    container_name: umcp_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      UMCP_JWT_SECRET: ${UMCP_JWT_SECRET:-dev-secret-change-me-32bytes}
+      UMCP_DB_DSN: postgresql+psycopg://umcp:umcp@postgres:5432/umcp_dev
+      UMCP_HOST: 0.0.0.0
+      UMCP_PORT: 8000
+      UMCP_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   umcp_pg_data:
