@@ -84,16 +84,21 @@ async def logout(
     jwt_service: JwtService = Depends(get_jwt_service),
     server: UMCPServer = Depends(get_server),
 ) -> Envelope:
-    """登出，吊销当前 token。"""
+    """登出，吊销当前 access token 及其关联的 refresh token。"""
     # 从 Authorization header 提取 token 并解码获取 jti
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.removeprefix("Bearer ").strip()
     if token:
         try:
             payload = jwt_service.decode(token)
-            jti = payload.get("jti")
-            if jti:
-                jwt_service.revoke(jti)
+            # 吊销 access token
+            access_jti = payload.get("jti")
+            if access_jti:
+                jwt_service.revoke(access_jti)
+            # 吊销关联的 refresh token（access 中嵌入的 refresh_jti）
+            refresh_jti = payload.get("refresh_jti")
+            if refresh_jti:
+                jwt_service.revoke(refresh_jti)
         except Exception:
             # 解码失败忽略（get_current_user 已校验过，此处兜底）
             pass

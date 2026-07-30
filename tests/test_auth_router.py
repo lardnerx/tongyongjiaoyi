@@ -124,6 +124,35 @@ class TestLogout:
         assert me_resp.status_code == 401
         assert me_resp.json()["code"] == 1001  # InvalidCredentialError
 
+    def test_logout_revokes_refresh_token(self):
+        """登出后 access 和 refresh 的 jti 都应在黑名单中。"""
+        app = _make_app()
+        client = TestClient(app)
+        login_resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13800000000"},
+        )
+        data = login_resp.json()["data"]
+        access_token = data["access_token"]
+        refresh_token = data["refresh_token"]
+        headers = {"Authorization": f"Bearer {access_token}"}
+        # 解码拿 jti 用于断言
+        jwt_service = app.state.jwt_service
+        access_payload = jwt_service.decode(access_token)
+        refresh_payload = jwt_service.decode(refresh_token)
+        access_jti = access_payload["jti"]
+        refresh_jti = access_payload["refresh_jti"]
+        assert refresh_jti == refresh_payload["jti"]  # 任务1的保证
+        # 登出前：均未吊销
+        assert not jwt_service.is_revoked(access_jti)
+        assert not jwt_service.is_revoked(refresh_jti)
+        # 登出
+        logout_resp = client.post("/api/v1/auth/logout", headers=headers)
+        assert logout_resp.status_code == 200
+        # 登出后：两者均已吊销
+        assert jwt_service.is_revoked(access_jti)
+        assert jwt_service.is_revoked(refresh_jti)
+
 
 class TestRefresh:
     def test_refresh_returns_new_access_token(self):
