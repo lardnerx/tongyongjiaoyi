@@ -104,7 +104,10 @@ class Task(ABC):
             raise RuntimeError(f"任务状态 {self.status} 不允许指派")
         self.assigned_resource_id = resource_id
         self._transition(TaskStatus.ASSIGNED)
-        self._emit(EventType.TASK_ASSIGNED)
+        self._emit(
+            EventType.TASK_ASSIGNED,
+            payload={"supplier_id": resource_id},
+        )
 
     def start_execution(self) -> None:
         """开始执行。"""
@@ -126,7 +129,11 @@ class Task(ABC):
             Event(
                 type=event_type,
                 source_layer="L2",
-                payload={"task_id": self.task_id, **(payload or {})},
+                payload={
+                    "task_id": self.task_id,
+                    "demander_id": self.demander_id,
+                    **(payload or {}),
+                },
             )
         )
 

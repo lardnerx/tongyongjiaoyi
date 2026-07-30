@@ -255,3 +255,43 @@ class TestDeal:
         deal.complete()
         with pytest.raises(RuntimeError, match="已处于终态"):
             deal.cancel()
+
+
+class TestTaskEmitPayload:
+    """Task._emit payload 应包含 demander_id（WS 推送依赖）。"""
+
+    def test_publish_emits_event_with_demander_id(self):
+        from umcp_core.core.domain import DomainTag
+        from umcp_core.core.task import StandardTask
+        from umcp_core.events.bus import EventBus
+        from umcp_core.events.types import EventType
+
+        bus = EventBus()
+        task = StandardTask(demander_id="user_123", domain_tag=DomainTag.of("ride"))
+        task.bind_event_bus(bus)
+        task.publish()
+
+        events = bus.history()
+        pub_events = [e for e in events if e.type == EventType.TASK_PUBLISHED]
+        assert len(pub_events) == 1
+        assert pub_events[0].payload["task_id"] == task.task_id
+        assert pub_events[0].payload["demander_id"] == "user_123"
+
+    def test_assign_emits_event_with_supplier_id(self):
+        from umcp_core.core.domain import DomainTag
+        from umcp_core.core.task import StandardTask
+        from umcp_core.events.bus import EventBus
+        from umcp_core.events.types import EventType
+
+        bus = EventBus()
+        task = StandardTask(demander_id="user_123", domain_tag=DomainTag.of("ride"))
+        task.bind_event_bus(bus)
+        task.publish()  # 推进到 MATCHING
+        task.assign_to("res_456")
+
+        events = bus.history()
+        assign_events = [e for e in events if e.type == EventType.TASK_ASSIGNED]
+        assert len(assign_events) == 1
+        assert assign_events[0].payload["supplier_id"] == "res_456"
+        # 仍保留 demander_id
+        assert assign_events[0].payload["demander_id"] == "user_123"
