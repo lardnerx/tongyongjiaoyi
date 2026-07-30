@@ -20,6 +20,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
+[project.scripts]
+umcp-server = "umcp_core.transport.__main__:main"
+
 [project.optional-dependencies]
 postgres = [
     "sqlalchemy>=2.0.0",
