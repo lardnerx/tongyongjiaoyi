@@ -34,6 +34,7 @@ http = [
     "uvicorn[standard]>=0.27.0",
     "pyjwt>=2.8.0",
     "pydantic>=2.5.0",
+    "prometheus-client>=0.20.0",
 ]
 dev = [
     "pytest>=7.0",
@@ -47,6 +48,7 @@ dev = [
     "uvicorn[standard]>=0.27.0",
     "pyjwt>=2.8.0",
     "httpx>=0.27.0",
+    "prometheus-client>=0.20.0",
 ]
 
 [tool.setuptools.packages.find]

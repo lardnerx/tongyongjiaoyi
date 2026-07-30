@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 
 from umcp_core.core.base import User
 from umcp_core.core.domain import Credential
@@ -18,6 +19,7 @@ from umcp_core.transport.auth import JwtService
 from umcp_core.transport.config import TransportConfig
 from umcp_core.transport.deps import get_jwt_service, get_server
 from umcp_core.transport.errors import InvalidCredentialError, register_exception_handlers
+from umcp_core.transport.metrics import MetricsMiddleware, metrics_response
 from umcp_core.transport.routers import register_routers
 from umcp_core.transport.ws import ConnectionManager, make_ws_event_bridge
 
@@ -90,11 +92,20 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Prometheus 指标中间件
+    app.add_middleware(MetricsMiddleware)
+
     # 异常处理器
     register_exception_handlers(app)
 
     # 路由
     register_routers(app)
+
+    # Prometheus /metrics 端点（不走 /api/v1 前缀，便于 scrape 配置）
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        """Prometheus 指标端点。"""
+        return metrics_response()
 
     # WebSocket 端点
     @app.websocket("/api/v1/ws/events")
