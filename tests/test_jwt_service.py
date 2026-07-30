@@ -73,6 +73,22 @@ class TestJwtIssue:
         assert "exp" in payload
         assert "jti" in payload
 
+    def test_access_token_contains_refresh_jti(self):
+        """access token 应嵌入 refresh_jti 字段，与 refresh token 的 jti 一致。"""
+        svc = JwtService(secret="test-secret")
+        user = _make_user()
+        tokens = svc.issue(user)
+        access_payload = pyjwt.decode(
+            tokens["access_token"], "test-secret", algorithms=["HS256"]
+        )
+        refresh_payload = pyjwt.decode(
+            tokens["refresh_token"], "test-secret", algorithms=["HS256"]
+        )
+        assert "refresh_jti" in access_payload
+        assert access_payload["refresh_jti"] == refresh_payload["jti"]
+        # access token 自己的 jti 仍存在且不同于 refresh_jti
+        assert access_payload["jti"] != access_payload["refresh_jti"]
+
 
 class TestJwtDecode:
     def test_decode_valid_token(self):

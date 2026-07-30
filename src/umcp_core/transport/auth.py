@@ -33,7 +33,10 @@ class JwtService:
         self._lock = threading.RLock()
 
     def issue(self, user: User) -> dict[str, Any]:
-        """签发 token 对。返回 {access_token, refresh_token, token_type, expires_in}。"""
+        """签发 token 对。返回 {access_token, refresh_token, token_type, expires_in}。
+
+        access token 嵌入 refresh_jti 字段，便于 logout 时一并吊销 refresh token。
+        """
         now = datetime.now(timezone.utc)
         base_claims = {
             "sub": user.user_id,
@@ -41,18 +44,20 @@ class JwtService:
             "roles": list(user.roles.keys()),
             "active_role": user.active_role.role_type if user.active_role else None,
         }
+        refresh_jti = uuid.uuid4().hex
         access_payload = {
             **base_claims,
             "iat": now,
             "exp": now + timedelta(seconds=self._access_ttl),
             "jti": uuid.uuid4().hex,
             "type": "access",
+            "refresh_jti": refresh_jti,
         }
         refresh_payload = {
             **base_claims,
             "iat": now,
             "exp": now + timedelta(seconds=self._refresh_ttl),
-            "jti": uuid.uuid4().hex,
+            "jti": refresh_jti,
             "type": "refresh",
         }
         access_token = pyjwt.encode(access_payload, self._secret, algorithm="HS256")
