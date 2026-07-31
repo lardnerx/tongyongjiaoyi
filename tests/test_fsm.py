@@ -81,3 +81,45 @@ class TestDealStateMachine:
         fsm = DealStateMachine()
         assert fsm.can_transition(DealStatus.PENDING, DealStatus.CANCELLED)
         assert fsm.can_transition(DealStatus.ACTIVE, DealStatus.CANCELLED)
+
+
+def test_deal_fsm_allows_active_to_in_service():
+    from umcp_core.fsm.deal_fsm import DealStateMachine
+    sm = DealStateMachine()
+    sm.validate_transition("active", "in_service")
+
+
+def test_deal_fsm_allows_in_service_to_completed():
+    from umcp_core.fsm.deal_fsm import DealStateMachine
+    sm = DealStateMachine()
+    sm.validate_transition("in_service", "completed")
+
+
+def test_deal_fsm_allows_in_service_to_disputed():
+    from umcp_core.fsm.deal_fsm import DealStateMachine
+    sm = DealStateMachine()
+    sm.validate_transition("in_service", "disputed")
+
+
+def test_deal_fsm_rejects_pending_to_in_service():
+    from umcp_core.fsm.deal_fsm import DealStateMachine
+    import pytest
+    sm = DealStateMachine()
+    with pytest.raises(ValueError):
+        sm.validate_transition("pending", "in_service")
+
+
+def test_deal_start_service_transitions_active_to_in_service():
+    from umcp_core.core.deal import Deal, DealStatus
+    deal = Deal(task_id="t1", resource_id="r1", demander_id="d1", supplier_id="s1")
+    deal.activate()
+    deal.start_service()
+    assert deal.status == DealStatus.IN_SERVICE
+
+
+def test_deal_check_in_is_alias_of_start_service():
+    from umcp_core.core.deal import Deal, DealStatus
+    deal = Deal(task_id="t1", resource_id="r1", demander_id="d1", supplier_id="s1")
+    deal.activate()
+    deal.check_in()
+    assert deal.status == DealStatus.IN_SERVICE

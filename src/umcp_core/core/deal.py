@@ -13,12 +13,13 @@ class DealStatus:
 
     PENDING = "pending"
     ACTIVE = "active"
+    IN_SERVICE = "in_service"
     COMPLETED = "completed"
     DISPUTED = "disputed"
     CANCELLED = "cancelled"
     RESOLVED = "resolved"
 
-    ALL: tuple[str, ...] = (PENDING, ACTIVE, COMPLETED, DISPUTED, CANCELLED, RESOLVED)
+    ALL: tuple[str, ...] = (PENDING, ACTIVE, IN_SERVICE, COMPLETED, DISPUTED, CANCELLED, RESOLVED)
 
     @classmethod
     def is_terminal(cls, status: str) -> bool:
@@ -59,6 +60,15 @@ class Deal:
         """匹配确认后激活。"""
         self._transition(DealStatus.ACTIVE)
         self._emit(self._get_event_type("DEAL_PAID"))
+
+    def start_service(self) -> None:
+        """服务开始（教练签到）。ACTIVE → IN_SERVICE。"""
+        self._transition(DealStatus.IN_SERVICE)
+        self._emit(self._get_event_type("DEAL_IN_SERVICE"))
+
+    def check_in(self) -> None:
+        """签到（start_service 的业务别名）。"""
+        self.start_service()
 
     def complete(self) -> None:
         """完成交易。"""

@@ -16,7 +16,8 @@ class DealStateMachine(StateMachine):
 
     TRANSITIONS: dict[str, set[str]] = {
         DealStatus.PENDING: {DealStatus.ACTIVE, DealStatus.CANCELLED},
-        DealStatus.ACTIVE: {DealStatus.COMPLETED, DealStatus.DISPUTED, DealStatus.CANCELLED},
+        DealStatus.ACTIVE: {DealStatus.IN_SERVICE, DealStatus.COMPLETED, DealStatus.DISPUTED, DealStatus.CANCELLED},
+        DealStatus.IN_SERVICE: {DealStatus.COMPLETED, DealStatus.DISPUTED, DealStatus.CANCELLED},
         DealStatus.DISPUTED: {DealStatus.RESOLVED},
         DealStatus.RESOLVED: {DealStatus.COMPLETED, DealStatus.CANCELLED},
         DealStatus.COMPLETED: set(),

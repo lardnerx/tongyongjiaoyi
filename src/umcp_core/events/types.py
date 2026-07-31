@@ -44,6 +44,7 @@ class EventType(str, Enum):
     # 交易生命周期（阶段五B 扩展）
     DEAL_CREATED = "deal.created"
     DEAL_PAID = "deal.paid"
+    DEAL_IN_SERVICE = "deal.in_service"
     DEAL_COMPLETED = "deal.completed"
     DEAL_DISPUTED = "deal.disputed"
     DEAL_CANCELLED = "deal.cancelled"
