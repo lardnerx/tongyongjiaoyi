@@ -55,3 +55,17 @@ class EventType(str, Enum):
     SUBTASK_CANCELLED = "subtask.cancelled"
     COMPOSITE_COMPLETED = "composite.completed"
     COMPOSITE_FAILED = "composite.failed"
+
+    # 评价（陪驾 MVP 扩展）
+    REVIEW_SUBMITTED = "review.submitted"
+
+    # 好友（陪驾 MVP 扩展）
+    FRIEND_REQUEST_CREATED = "friend_request.created"
+    FRIEND_REQUEST_ACCEPTED = "friend_request.accepted"
+
+    # 签到签退（陪驾 MVP 扩展）
+    CHECK_IN = "check_in"
+    CHECK_OUT = "check_out"
+
+    # 支付（陪驾 MVP 扩展）
+    PAYMENT_PAID = "payment.paid"

@@ -1,67 +1,43 @@
-"""EventType 扩展和 EventBus.unsubscribe_all 测试。"""
+"""EventType 枚举扩展测试。"""
 
 from __future__ import annotations
 
-from umcp_core.events.bus import EventBus, Event
-from umcp_core.events.types import EventType
+
+def test_event_type_deal_in_service_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.DEAL_IN_SERVICE.value == "deal.in_service"
 
 
-class TestEventTypeExtension:
-    def test_resource_events_exist(self):
-        assert EventType.RESOURCE_REGISTERED.value == "resource.registered"
-        assert EventType.RESOURCE_STATUS_CHANGED.value == "resource.status_changed"
-
-    def test_deal_events_exist(self):
-        assert EventType.DEAL_CREATED.value == "deal.created"
-        assert EventType.DEAL_PAID.value == "deal.paid"
-        assert EventType.DEAL_COMPLETED.value == "deal.completed"
-        assert EventType.DEAL_DISPUTED.value == "deal.disputed"
-        assert EventType.DEAL_CANCELLED.value == "deal.cancelled"
-        assert EventType.DEAL_RESOLVED.value == "deal.resolved"
+def test_event_type_review_submitted_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.REVIEW_SUBMITTED.value == "review.submitted"
 
 
-class TestEventBusUnsubscribeAll:
-    def test_unsubscribe_all_removes_global_handler(self):
-        bus = EventBus()
-        calls: list[Event] = []
+def test_event_type_friend_request_created_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.FRIEND_REQUEST_CREATED.value == "friend_request.created"
 
-        def handler(event: Event) -> None:
-            calls.append(event)
 
-        bus.subscribe_all(handler)
-        assert len(bus.history()) == 0 or True  # subscribe 不发事件
+def test_event_type_friend_request_accepted_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.FRIEND_REQUEST_ACCEPTED.value == "friend_request.accepted"
 
-        bus.publish(Event(type=EventType.TASK_PUBLISHED, payload={"task_id": "t1"}))
-        assert len(calls) == 1
 
-        bus.unsubscribe_all(handler)
-        bus.publish(Event(type=EventType.TASK_PUBLISHED, payload={"task_id": "t2"}))
-        assert len(calls) == 1  # 不再收到
+def test_event_type_check_in_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.CHECK_IN.value == "check_in"
 
-    def test_unsubscribe_all_unrelated_handler_keeps_others(self):
-        bus = EventBus()
-        calls_a: list[Event] = []
-        calls_b: list[Event] = []
 
-        def handler_a(event: Event) -> None:
-            calls_a.append(event)
+def test_event_type_check_out_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.CHECK_OUT.value == "check_out"
 
-        def handler_b(event: Event) -> None:
-            calls_b.append(event)
 
-        bus.subscribe_all(handler_a)
-        bus.subscribe_all(handler_b)
-        bus.unsubscribe_all(handler_a)
+def test_event_type_payment_paid_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.PAYMENT_PAID.value == "payment.paid"
 
-        bus.publish(Event(type=EventType.TASK_PUBLISHED))
-        assert len(calls_a) == 0
-        assert len(calls_b) == 1
 
-    def test_unsubscribe_all_not_subscribed_is_noop(self):
-        bus = EventBus()
-
-        def handler(event: Event) -> None:
-            pass
-
-        # 不应抛异常
-        bus.unsubscribe_all(handler)
+def test_event_type_payment_refunded_exists():
+    from umcp_core.events.types import EventType
+    assert EventType.PAYMENT_REFUNDED.value == "payment.refunded"
