@@ -39,7 +39,8 @@ async function refreshTokens(): Promise<void> {
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retried: boolean = false
 ): Promise<T> {
   const { accessToken } = useAuthStore.getState();
   const headers: Record<string, string> = {
@@ -59,6 +60,9 @@ async function request<T>(
 
   // 检查是否 token 过期（code=1002）
   if ("code" in envelope && envelope.code === 1002) {
+    if (retried) {
+      throw new ApiError(1002, "刷新后令牌仍被拒绝");
+    }
     if (!isRefreshing) {
       isRefreshing = true;
       refreshPromise = refreshTokens().finally(() => {
@@ -67,8 +71,8 @@ async function request<T>(
       });
     }
     await refreshPromise;
-    // 重试原请求
-    return request<T>(path, options);
+    // 重试原请求，标记已重试
+    return request<T>(path, options, true);
   }
 
   // 非 0 code 视为错误

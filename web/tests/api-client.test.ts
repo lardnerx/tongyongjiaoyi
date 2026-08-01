@@ -115,4 +115,57 @@ describe("api-client", () => {
     await expect(apiClient.get("/auth/me")).rejects.toThrow();
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
   });
+
+  it("concurrent 1002 requests share single refresh", async () => {
+    useAuthStore.getState().setTokens("expired_access", "valid_refresh");
+    // 三个并发请求各自第一次返回 1002
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 1002, message: "token 已过期", details: null }),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 1002, message: "token 已过期", details: null }),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 1002, message: "token 已过期", details: null }),
+    });
+    // 一次刷新成功
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { access_token: "new_access", refresh_token: "new_refresh", token_type: "Bearer", expires_in: 3600 },
+        message: "ok",
+      }),
+    });
+    // 三个重试各自返回成功
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 0, data: { n: 1 }, message: "ok" }),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 0, data: { n: 2 }, message: "ok" }),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 0, data: { n: 3 }, message: "ok" }),
+    });
+
+    const results = await Promise.all([
+      apiClient.get("/test/1"),
+      apiClient.get("/test/2"),
+      apiClient.get("/test/3"),
+    ]);
+
+    // 验证 /auth/refresh 只被调用一次（核心防并发断言）
+    const refreshCalls = mockFetch.mock.calls.filter(
+      (c) => String(c[0]).includes("/auth/refresh")
+    );
+    expect(refreshCalls.length).toBe(1);
+    // 验证三个请求都拿到结果
+    expect(results.length).toBe(3);
+  });
 });
