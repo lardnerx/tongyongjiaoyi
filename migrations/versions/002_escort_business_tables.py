@@ -101,8 +101,23 @@ def upgrade() -> None:
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
     )
 
+    # ---------- LBS 位置表（PostGIS）----------
+    op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+    op.create_table(
+        "lbs_locations",
+        sa.Column("location_id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("resource_id", sa.String(64), nullable=False),
+        sa.Column("heading", sa.Float(), nullable=True),
+        sa.Column("speed", sa.Float(), nullable=True),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+    )
+    op.execute("SELECT AddGeometryColumn('lbs_locations', 'location', 4326, 'POINT', 2)")
+    op.execute("CREATE INDEX idx_lbs_locations_geom ON lbs_locations USING GIST (location)")
+    op.create_index("idx_lbs_locations_resource", "lbs_locations", ["resource_id"])
+
 
 def downgrade() -> None:
+    op.drop_table("lbs_locations")
     op.drop_table("notification_templates")
     op.drop_table("notifications")
     op.drop_table("files")
