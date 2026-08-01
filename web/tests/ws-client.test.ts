@@ -22,6 +22,7 @@ class MockWebSocket {
     MockWebSocket.instances.push(this);
     // 模拟异步连接成功
     setTimeout(() => {
+      if (this.readyState === 3) return; // 已关闭则不触发 onopen
       this.readyState = 1;
       this.onopen?.(new Event("open"));
     }, 0);
