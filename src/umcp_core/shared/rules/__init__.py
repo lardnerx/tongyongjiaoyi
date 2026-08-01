@@ -1,3 +1,5 @@
 """规则配置中心。"""
 
-__all__ = ["BusinessRuleModel", "BusinessRuleHistoryModel"]
+from umcp_core.shared.rules.repository import RuleRepository, RuleRepositoryProtocol
+
+__all__ = ["RuleRepository", "RuleRepositoryProtocol"]
