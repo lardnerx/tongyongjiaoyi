@@ -1,0 +1,139 @@
+"""陪驾教练 router（接单/签到/签退）。"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+from umcp_core.core.base import User
+from umcp_core.core.deal import Deal
+from umcp_core.events.bus import Event
+from umcp_core.events.types import EventType
+from umcp_core.server import UMCPServer
+from umcp_core.transport.deps import get_current_user, get_server
+from umcp_core.transport.errors import IllegalStateError, NotFoundError
+from umcp_core.transport.schemas import Envelope, ok
+
+router = APIRouter(prefix="/api/v1/escort/coaches", tags=["escort-coaches"])
+
+
+class AcceptDealRequest(BaseModel):
+    coach_id: str
+
+
+class CheckInRequest(BaseModel):
+    coach_id: str
+    lat: float
+    lng: float
+
+
+class CheckOutRequest(BaseModel):
+    coach_id: str
+    lat: float
+    lng: float
+
+
+class DealInfo(BaseModel):
+    deal_id: str
+    task_id: str
+    resource_id: str
+    demander_id: str
+    supplier_id: str
+    status: str
+    final_amount: float | None = None
+
+
+def _deal_to_info(deal: Deal) -> DealInfo:
+    return DealInfo(
+        deal_id=deal.deal_id,
+        task_id=deal.task_id,
+        resource_id=deal.resource_id,
+        demander_id=deal.demander_id,
+        supplier_id=deal.supplier_id,
+        status=deal.status,
+        final_amount=deal.final_amount,
+    )
+
+
+@router.post("/deals/{deal_id}/accept", response_model=Envelope)
+async def accept_deal(
+    deal_id: str,
+    req: AcceptDealRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练接单：PENDING → ACTIVE。"""
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.activate()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.deal_repo.save(deal)
+    return ok(_deal_to_info(deal).model_dump())
+
+
+@router.post("/deals/{deal_id}/check-in", response_model=Envelope)
+async def check_in(
+    deal_id: str,
+    req: CheckInRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练签到：ACTIVE → IN_SERVICE。"""
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.check_in()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.deal_repo.save(deal)
+    server.event_bus.publish(
+        Event(
+            type=EventType.CHECK_IN,
+            source_layer="ESCORT",
+            payload={
+                "deal_id": deal_id,
+                "coach_id": req.coach_id,
+                "lat": req.lat,
+                "lng": req.lng,
+            },
+        )
+    )
+    return ok(_deal_to_info(deal).model_dump())
+
+
+@router.post("/deals/{deal_id}/check-out", response_model=Envelope)
+async def check_out(
+    deal_id: str,
+    req: CheckOutRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练签退：IN_SERVICE → COMPLETED。"""
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.check_out()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.deal_repo.save(deal)
+    server.event_bus.publish(
+        Event(
+            type=EventType.CHECK_OUT,
+            source_layer="ESCORT",
+            payload={
+                "deal_id": deal_id,
+                "coach_id": req.coach_id,
+                "lat": req.lat,
+                "lng": req.lng,
+            },
+        )
+    )
+    return ok(_deal_to_info(deal).model_dump())

@@ -70,6 +70,10 @@ class Deal:
         """签到（start_service 的业务别名）。"""
         self.start_service()
 
+    def check_out(self) -> None:
+        """签退（complete 的业务别名，IN_SERVICE → COMPLETED）。"""
+        self.complete()
+
     def complete(self) -> None:
         """完成交易。"""
         self._transition(DealStatus.COMPLETED)
