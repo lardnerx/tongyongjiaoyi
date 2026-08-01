@@ -57,3 +57,61 @@ def test_rule_repo_append_history(rule_repo):
     assert history[1]["new_value"] == {"v": 2}
     assert history[1]["changed_by"] == "admin_2"
     assert history[1]["change_reason"] == "调整参数"
+
+
+@pytest.fixture
+def rule_config(rule_repo):
+    from umcp_core.shared.rules.config import RuleConfig
+    return RuleConfig(rule_repo)
+
+
+def test_rule_config_get_returns_default_when_absent(rule_config):
+    assert rule_config.get("nonexistent", default=42) == 42
+
+
+def test_rule_config_get_returns_value_after_set(rule_config):
+    rule_config.set("escort.cancel.policy", {"window": 5}, "admin_1", "cancel")
+    assert rule_config.get("escort.cancel.policy") == {"window": 5}
+
+
+def test_rule_config_get_caches_value(rule_config):
+    rule_config.set("k", {"v": 1}, "admin", "cat")
+    _ = rule_config.get("k")
+    # 直接修改 repo，cache 应仍返回旧值
+    rule_config._repo.upsert("k", {"v": 999}, "admin", "cat")
+    assert rule_config.get("k") == {"v": 1}
+
+
+def test_rule_config_reload_refreshes_cache(rule_config):
+    rule_config.set("k", {"v": 1}, "admin", "cat")
+    _ = rule_config.get("k")
+    rule_config._repo.upsert("k", {"v": 999}, "admin", "cat")
+    rule_config.reload()
+    assert rule_config.get("k") == {"v": 999}
+
+
+def test_rule_config_subscribe_invokes_callback_on_set(rule_config):
+    received = []
+    rule_config.subscribe("k", lambda value: received.append(value))
+    rule_config.set("k", {"v": 1}, "admin", "cat")
+    assert received == [{"v": 1}]
+    rule_config.set("k", {"v": 2}, "admin", "cat")
+    assert received == [{"v": 1}, {"v": 2}]
+
+
+def test_rule_config_preload_defaults():
+    from umcp_core.shared.rules.config import RuleConfig
+    from umcp_core.shared.rules.repository import InMemoryRuleRepository
+    rc = RuleConfig(InMemoryRuleRepository())
+    rc.set_defaults(
+        {
+            "escort.coach.level_config": {"levels": ["BRONZE", "SILVER"]},
+            "escort.payment.deposit_ratio": 0.3,
+        }
+    )
+    assert rc.get("escort.coach.level_config") == {"levels": ["BRONZE", "SILVER"]}
+    assert rc.get("escort.payment.deposit_ratio") == 0.3
+    # set_defaults 不覆盖已设置的值
+    rc.set("escort.payment.deposit_ratio", 0.5, "admin", "payment")
+    rc.set_defaults({"escort.payment.deposit_ratio": 0.3})
+    assert rc.get("escort.payment.deposit_ratio") == 0.5

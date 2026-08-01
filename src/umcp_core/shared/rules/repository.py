@@ -70,7 +70,7 @@ class InMemoryRuleRepository:
         now = datetime.utcnow()
         self._rules[rule_key] = {
             "rule_key": rule_key,
-            "rule_value": dict(rule_value),
+            "rule_value": dict(rule_value) if isinstance(rule_value, dict) else rule_value,
             "description": description or (old["description"] if old else None),
             "category": category,
             "version": new_version,
@@ -81,8 +81,8 @@ class InMemoryRuleRepository:
             {
                 "history_id": len(self._history) + 1,
                 "rule_key": rule_key,
-                "old_value": dict(old_value) if old_value else None,
-                "new_value": dict(rule_value),
+                "old_value": dict(old_value) if isinstance(old_value, dict) else old_value,
+                "new_value": dict(rule_value) if isinstance(rule_value, dict) else rule_value,
                 "changed_by": updated_by,
                 "changed_at": now,
                 "change_reason": reason,
