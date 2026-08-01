@@ -22,7 +22,8 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (accessToken, refreshToken) => {
         set({ accessToken, refreshToken, isAuthenticated: true });
         // 同步 cookie 供 middleware 读取
-        document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax`;
+        const secure = process.env.NODE_ENV === "production" ? "; secure" : "";
+        document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure}`;
       },
       setUser: (user) => set({ user }),
       logout: () => {

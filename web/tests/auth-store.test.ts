@@ -40,6 +40,20 @@ describe("auth-store", () => {
     expect(state.isAuthenticated).toBe(false);
   });
 
+  it("setTokens writes auth-token cookie for middleware", () => {
+    useAuthStore.getState().setTokens("access_cookie_test", "refresh");
+    // jsdom 支持 document.cookie
+    expect(document.cookie).toContain("auth-token=access_cookie_test");
+  });
+
+  it("logout clears auth-token cookie", () => {
+    useAuthStore.getState().setTokens("access_to_clear", "refresh");
+    expect(document.cookie).toContain("auth-token=access_to_clear");
+    useAuthStore.getState().logout();
+    // 清除后 cookie 中不再包含有效 token（max-age=0 已使其失效）
+    expect(document.cookie).not.toContain("auth-token=access_to_clear");
+  });
+
   it("persist tokens to localStorage", () => {
     useAuthStore.getState().setTokens("access_persist", "refresh_persist");
     // Zustand persist 中间件会异步写入，手动触发
