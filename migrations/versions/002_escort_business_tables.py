@@ -61,8 +61,24 @@ def upgrade() -> None:
     op.create_index("idx_payments_deal", "payments", ["deal_id"])
     op.create_index("idx_payments_user", "payments", ["user_id", "status"])
 
+    # ---------- 文件存储表 ----------
+    op.create_table(
+        "files",
+        sa.Column("file_id", sa.String(64), primary_key=True),
+        sa.Column("uploader_id", sa.String(64), nullable=False),
+        sa.Column("url", sa.String(512), nullable=False),
+        sa.Column("file_type", sa.String(32), nullable=False),
+        sa.Column("biz_type", sa.String(32), nullable=False),
+        sa.Column("biz_id", sa.String(64), nullable=False),
+        sa.Column("size", sa.BigInteger(), nullable=False),
+        sa.Column("mime", sa.String(128), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_files_biz", "files", ["biz_type", "biz_id"])
+
 
 def downgrade() -> None:
+    op.drop_table("files")
     op.drop_table("payments")
     op.drop_table("business_rule_history")
     op.drop_table("business_rules")
