@@ -42,7 +42,27 @@ def upgrade() -> None:
     )
     op.create_index("idx_rule_history_key", "business_rule_history", ["rule_key"])
 
+    # ---------- 支付记录表 ----------
+    op.create_table(
+        "payments",
+        sa.Column("payment_id", sa.String(64), primary_key=True),
+        sa.Column("deal_id", sa.String(64), nullable=False),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("amount", sa.Numeric(12, 2), nullable=False),
+        sa.Column("type", sa.String(16), nullable=False),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("gateway", sa.String(16), nullable=False),
+        sa.Column("trade_no", sa.String(128), nullable=True),
+        sa.Column("paid_at", sa.DateTime(), nullable=True),
+        sa.Column("refunded_at", sa.DateTime(), nullable=True),
+        sa.Column("metadata", postgresql.JSONB(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_payments_deal", "payments", ["deal_id"])
+    op.create_index("idx_payments_user", "payments", ["user_id", "status"])
+
 
 def downgrade() -> None:
+    op.drop_table("payments")
     op.drop_table("business_rule_history")
     op.drop_table("business_rules")
