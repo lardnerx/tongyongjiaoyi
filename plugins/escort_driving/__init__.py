@@ -38,6 +38,7 @@ def register_plugin(server: "UMCPServer") -> None:
     from umcp_core.layers.l4 import FlatCommissionRule, Hourly
     from umcp_core.layers.l5 import WeightedSumTrustEngine
     from escort_driving.scoring import EscortMatchScorer
+    from escort_driving.scheduled_match import ScheduledMatchStrategy
 
     server.register_match_strategy(
         domain,
@@ -56,4 +57,9 @@ def register_plugin(server: "UMCPServer") -> None:
     server.register_trust_engine(
         domain,
         WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"]),
+    )
+    # 预约单 Top N 推荐策略（与实时单 InstantMatch 区分，供 router 调用）
+    server.register_scheduled_match_strategy(
+        domain,
+        ScheduledMatchStrategy(top_n=3),
     )

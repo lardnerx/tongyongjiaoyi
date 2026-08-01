@@ -101,6 +101,8 @@ class UMCPServer:
         self._match_strategies: dict[str, MatchStrategy] = {}
         self._payment_schemas: dict[str, PaymentSchema] = {}
         self._trust_engines: dict[str, TrustEngine] = {}
+        # 预约单匹配策略（Top N 推荐，按 domain 索引）
+        self._scheduled_match_strategies: dict[str, Any] = {}
 
         # 跨 domain 信任聚合器（默认算术平均）
         self._trust_aggregator: TrustAggregator = MeanTrustAggregator()
@@ -250,6 +252,14 @@ class UMCPServer:
         """按 domain 查询匹配策略，未命中时回退到单值属性。"""
         key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._match_strategies.get(key, self.match_strategy)
+
+    def register_scheduled_match_strategy(self, domain_tag: str, strategy) -> None:
+        """注册预约单匹配策略。"""
+        self._scheduled_match_strategies[domain_tag.lower()] = strategy
+
+    def scheduled_match_strategy_for(self, domain_tag: str):
+        """查询预约单匹配策略。未注册返回 None。"""
+        return self._scheduled_match_strategies.get(domain_tag.lower())
 
     def payment_schema_for(self, domain: DomainTag | str) -> PaymentSchema | None:
         """按 domain 查询支付模式，未命中时回退到单值属性。"""
