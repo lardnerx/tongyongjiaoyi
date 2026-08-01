@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from umcp_core.core.domain import DomainTag, SpatioTemporalConstraint
@@ -20,23 +21,37 @@ class EscortTask(StandardTask):
     def __init__(
         self,
         demander_id: str,
-        domain_tag: DomainTag,
         origin_lat: float,
         origin_lng: float,
+        domain_tag: DomainTag | None = None,
         car_type: str = "manual",
         required_skills: list[str] | None = None,
         duration_hours: float = 1.0,
+        order_type: str = "REALTIME",
+        scheduled_at: datetime | None = None,
+        coach_level_pref: str = "ANY",
         **kwargs: Any,
     ) -> None:
+        if domain_tag is None:
+            domain_tag = DomainTag.of("escort")
         spatio = SpatioTemporalConstraint(
             origin_lat=origin_lat,
             origin_lng=origin_lng,
         )
         super().__init__(demander_id, domain_tag, spatio_temporal=spatio, **kwargs)
 
+        self.order_type = order_type
+        self.scheduled_at = scheduled_at
+        self.coach_level_pref = coach_level_pref
+
         self.structured_fields["car_type"] = car_type
         self.structured_fields["required_skills"] = required_skills or []
         self.structured_fields["duration_hours"] = duration_hours
+        self.structured_fields["order_type"] = order_type
+        self.structured_fields["scheduled_at"] = (
+            scheduled_at.isoformat() if scheduled_at else None
+        )
+        self.structured_fields["coach_level_pref"] = coach_level_pref
 
         # 供 Hourly 支付策略使用
         self.custom_fields["actual_hours"] = duration_hours
