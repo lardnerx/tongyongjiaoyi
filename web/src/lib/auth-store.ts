@@ -19,16 +19,21 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       user: null,
       isAuthenticated: false,
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken, isAuthenticated: true }),
+      setTokens: (accessToken, refreshToken) => {
+        set({ accessToken, refreshToken, isAuthenticated: true });
+        // 同步 cookie 供 middleware 读取
+        document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax`;
+      },
       setUser: (user) => set({ user }),
-      logout: () =>
+      logout: () => {
         set({
           accessToken: null,
           refreshToken: null,
           user: null,
           isAuthenticated: false,
-        }),
+        });
+        document.cookie = "auth-token=; path=/; max-age=0";
+      },
     }),
     {
       name: "auth-storage",
