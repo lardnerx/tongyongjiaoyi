@@ -2,7 +2,7 @@
 
 from umcp_core.transport.routers.auth import router as auth_router
 from umcp_core.transport.routers.deals import router as deals_router
-from umcp_core.transport.routers.escort import coaches_router
+from umcp_core.transport.routers.escort import coaches_router, orders_router
 from umcp_core.transport.routers.events import router as events_router
 from umcp_core.transport.routers.health import router as health_router
 from umcp_core.transport.routers.matches import router as matches_router
@@ -23,3 +23,4 @@ def register_routers(app) -> None:
     app.include_router(events_router, prefix="/api/v1/events")
     # 陪驾业务 router（prefix 已内置于 router）
     app.include_router(coaches_router)
+    app.include_router(orders_router)
