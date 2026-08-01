@@ -76,8 +76,35 @@ def upgrade() -> None:
     )
     op.create_index("idx_files_biz", "files", ["biz_type", "biz_id"])
 
+    # ---------- 通知表 ----------
+    op.create_table(
+        "notifications",
+        sa.Column("notification_id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("type", sa.String(64), nullable=False),
+        sa.Column("title", sa.String(256), nullable=False),
+        sa.Column("body", sa.Text(), nullable=False),
+        sa.Column("channels", postgresql.JSONB(), nullable=True),
+        sa.Column("read_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_notifications_user", "notifications", ["user_id", "read_at"])
+
+    op.create_table(
+        "notification_templates",
+        sa.Column("template_key", sa.String(128), primary_key=True),
+        sa.Column("event_type", sa.String(64), nullable=False),
+        sa.Column("recipient_role", sa.String(32), nullable=False),
+        sa.Column("channels", postgresql.JSONB(), nullable=True),
+        sa.Column("title_template", sa.Text(), nullable=False),
+        sa.Column("body_template", sa.Text(), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+    )
+
 
 def downgrade() -> None:
+    op.drop_table("notification_templates")
+    op.drop_table("notifications")
     op.drop_table("files")
     op.drop_table("payments")
     op.drop_table("business_rule_history")
