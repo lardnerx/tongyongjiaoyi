@@ -115,8 +115,106 @@ def upgrade() -> None:
     op.execute("CREATE INDEX idx_lbs_locations_geom ON lbs_locations USING GIST (location)")
     op.create_index("idx_lbs_locations_resource", "lbs_locations", ["resource_id"])
 
+    # ---------- 陪驾业务扩展表 ----------
+    op.create_table(
+        "escort_coach_profiles",
+        sa.Column("profile_id", sa.String(64), primary_key=True),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("car_model", sa.String(64), nullable=True),
+        sa.Column("license_plate", sa.String(32), nullable=True),
+        sa.Column("service_areas", postgresql.JSONB(), nullable=True),
+        sa.Column("hourly_rate", sa.Numeric(10, 2), nullable=True),
+        sa.Column("coach_level", sa.String(16), nullable=False, server_default="BRONZE"),
+        sa.Column("level_updated_at", sa.DateTime(), nullable=True),
+        sa.Column("bio", sa.Text(), nullable=True),
+        sa.Column("verified", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("verified_at", sa.DateTime(), nullable=True),
+        sa.Column("verified_by", sa.String(64), nullable=True),
+    )
+    op.create_index("idx_coach_profiles_user", "escort_coach_profiles", ["user_id"], unique=True)
+
+    op.create_table(
+        "escort_reviews",
+        sa.Column("review_id", sa.String(64), primary_key=True),
+        sa.Column("deal_id", sa.String(64), nullable=False),
+        sa.Column("evaluator_id", sa.String(64), nullable=False),
+        sa.Column("evaluatee_id", sa.String(64), nullable=False),
+        sa.Column("evaluator_role", sa.String(16), nullable=False),
+        sa.Column("ratings", postgresql.JSONB(), nullable=False),
+        sa.Column("comment", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_reviews_evaluatee", "escort_reviews", ["evaluatee_id"])
+    op.create_index("idx_reviews_deal", "escort_reviews", ["deal_id"])
+
+    op.create_table(
+        "escort_service_records",
+        sa.Column("record_id", sa.String(64), primary_key=True),
+        sa.Column("deal_id", sa.String(64), nullable=False),
+        sa.Column("coach_id", sa.String(64), nullable=False),
+        sa.Column("student_id", sa.String(64), nullable=False),
+        sa.Column("start_at", sa.DateTime(), nullable=False),
+        sa.Column("end_at", sa.DateTime(), nullable=True),
+        sa.Column("start_lat", sa.Float(), nullable=True),
+        sa.Column("start_lng", sa.Float(), nullable=True),
+        sa.Column("end_lat", sa.Float(), nullable=True),
+        sa.Column("end_lng", sa.Float(), nullable=True),
+        sa.Column("duration_minutes", sa.Integer(), nullable=True),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_service_records_coach", "escort_service_records", ["coach_id", "start_at"])
+    op.create_index("idx_service_records_deal", "escort_service_records", ["deal_id"])
+
+    op.create_table(
+        "friendships",
+        sa.Column("friendship_id", sa.String(64), primary_key=True),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("friend_id", sa.String(64), nullable=False),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("accepted_at", sa.DateTime(), nullable=True),
+    )
+    op.create_index("idx_friendships_user", "friendships", ["user_id", "status"])
+    op.create_index("idx_friendships_pair", "friendships", ["user_id", "friend_id"], unique=True)
+
+    op.create_table(
+        "credit_logs",
+        sa.Column("log_id", sa.String(64), primary_key=True),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("delta", sa.Integer(), nullable=False),
+        sa.Column("reason", sa.String(128), nullable=False),
+        sa.Column("deal_id", sa.String(64), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("idx_credit_logs_user", "credit_logs", ["user_id", "created_at"])
+
+    # ---------- 核心表扩展字段 ----------
+    # tasks 表新增字段
+    op.add_column("tasks", sa.Column("order_type", sa.String(16), nullable=True))
+    op.add_column("tasks", sa.Column("scheduled_at", sa.DateTime(), nullable=True))
+    op.add_column("tasks", sa.Column("coach_level_pref", sa.String(16), nullable=True))
+
+    # deals 表新增字段
+    op.add_column("deals", sa.Column("service_started_at", sa.DateTime(), nullable=True))
+    op.add_column("deals", sa.Column("service_ended_at", sa.DateTime(), nullable=True))
+
 
 def downgrade() -> None:
+    # 核心表扩展字段
+    op.drop_column("deals", "service_ended_at")
+    op.drop_column("deals", "service_started_at")
+    op.drop_column("tasks", "coach_level_pref")
+    op.drop_column("tasks", "scheduled_at")
+    op.drop_column("tasks", "order_type")
+
+    # 陪驾业务扩展表（反向 drop）
+    op.drop_table("credit_logs")
+    op.drop_table("friendships")
+    op.drop_table("escort_service_records")
+    op.drop_table("escort_reviews")
+    op.drop_table("escort_coach_profiles")
+
     op.drop_table("lbs_locations")
     op.drop_table("notification_templates")
     op.drop_table("notifications")
