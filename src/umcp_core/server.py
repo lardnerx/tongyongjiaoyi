@@ -434,25 +434,37 @@ class UMCPServer:
         # 2. 发布父任务
         composite.publish()
 
-        # 3. 注册子任务事件桥接：TASK_COMPLETED → SUBTASK_*
+        # 3. 注册子任务事件桥接：TASK_COMPLETED → SUBTASK_COMPLETED，TASK_CANCELLED → SUBTASK_CANCELLED
         subtask_ids = {s.task_id for s in composite.subtasks}
 
-        def _bridge_to_subtask_event(event: Event) -> None:
+        def _bridge_to_subtask_completed(event: Event) -> None:
             task_id = event.payload.get("task_id")
             if task_id not in subtask_ids:
                 return
             subtask = composite._find_sub(task_id)
-            if event.payload.get("cancelled"):
-                composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
-            else:
-                composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
+            composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
             # 子任务状态变更后，尝试派发新就绪的子任务（串行依赖链推进）
             self._dispatch_ready_subtasks(composite)
             # 复合任务到达终态后取消订阅，避免桥接函数闭包泄漏
             if TaskStatus.is_terminal(composite.status):
-                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+                self.event_bus.unsubscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
 
-        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+        def _bridge_to_subtask_cancelled(event: Event) -> None:
+            task_id = event.payload.get("task_id")
+            if task_id not in subtask_ids:
+                return
+            subtask = composite._find_sub(task_id)
+            composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
+            # 子任务状态变更后，尝试派发新就绪的子任务（串行依赖链推进）
+            self._dispatch_ready_subtasks(composite)
+            # 复合任务到达终态后取消订阅，避免桥接函数闭包泄漏
+            if TaskStatus.is_terminal(composite.status):
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+                self.event_bus.unsubscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
+
+        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+        self.event_bus.subscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
 
         # 4. 启动所有就绪子任务
         self._dispatch_ready_subtasks(composite)
@@ -613,25 +625,37 @@ class UMCPServer:
         # 重新绑定 EventBus
         composite.bind_event_bus(self.event_bus)
 
-        # 重新注册 TASK_COMPLETED → SUBTASK_* 桥接（与 execute_composite 中的逻辑一致）
+        # 重新注册 TASK_COMPLETED → SUBTASK_COMPLETED、TASK_CANCELLED → SUBTASK_CANCELLED 桥接（与 execute_composite 中的逻辑一致）
         subtask_ids = {s.task_id for s in composite.subtasks}
 
-        def _bridge_to_subtask_event(event: Event) -> None:
+        def _bridge_to_subtask_completed(event: Event) -> None:
             task_id = event.payload.get("task_id")
             if task_id not in subtask_ids:
                 return
             subtask = composite._find_sub(task_id)
             if subtask is None:
                 return
-            if event.payload.get("cancelled"):
-                composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
-            else:
-                composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
+            composite.emit_subtask_event(subtask, EventType.SUBTASK_COMPLETED)
             self._dispatch_ready_subtasks(composite)
             if TaskStatus.is_terminal(composite.status):
-                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+                self.event_bus.unsubscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
 
-        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_event)
+        def _bridge_to_subtask_cancelled(event: Event) -> None:
+            task_id = event.payload.get("task_id")
+            if task_id not in subtask_ids:
+                return
+            subtask = composite._find_sub(task_id)
+            if subtask is None:
+                return
+            composite.emit_subtask_event(subtask, EventType.SUBTASK_CANCELLED)
+            self._dispatch_ready_subtasks(composite)
+            if TaskStatus.is_terminal(composite.status):
+                self.event_bus.unsubscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+                self.event_bus.unsubscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
+
+        self.event_bus.subscribe(EventType.TASK_COMPLETED, _bridge_to_subtask_completed)
+        self.event_bus.subscribe(EventType.TASK_CANCELLED, _bridge_to_subtask_cancelled)
 
         # 遍历子任务，按状态分类处理
         for subtask in composite.subtasks:
