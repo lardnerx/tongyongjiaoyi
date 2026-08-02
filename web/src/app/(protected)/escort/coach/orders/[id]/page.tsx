@@ -206,6 +206,13 @@ export default function CoachOrderDetailPage() {
           </Button>
         )}
 
+        {/* 已取消状态 */}
+        {order.status === "cancelled" && (
+          <div className="bg-gray-100 border border-gray-300 rounded-lg p-4 text-center">
+            <p className="text-gray-700">订单已取消</p>
+          </div>
+        )}
+
         {/* 评价 */}
         {order.status === "completed" && !hasReviewed && user && (
           <div className="bg-white rounded-lg border p-4">
