@@ -73,6 +73,9 @@ export default function DashboardPage() {
               <Button onClick={() => router.push("/escort/student/book-instant")}>
                 实时叫车
               </Button>
+              <Button variant="outline" onClick={() => router.push("/escort/student/book-scheduled")}>
+                预约叫车
+              </Button>
               <Button variant="outline" onClick={() => router.push("/escort/student/orders")}>
                 我的订单
               </Button>
