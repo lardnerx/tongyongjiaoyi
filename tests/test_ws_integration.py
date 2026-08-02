@@ -142,3 +142,10 @@ class TestWsEventPush:
             ws.send_text("ping")
             msg = ws.receive_json()
             assert msg["type"] == "pong"
+
+
+def test_payment_paid_is_pushable():
+    """PAYMENT_PAID 应在 WS_PUSHABLE_EVENTS 中。"""
+    from umcp_core.transport.ws import WS_PUSHABLE_EVENTS
+    from umcp_core.events.types import EventType
+    assert EventType.PAYMENT_PAID in WS_PUSHABLE_EVENTS

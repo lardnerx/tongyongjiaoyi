@@ -33,6 +33,7 @@ WS_PUSHABLE_EVENTS: set[EventType] = {
     EventType.DEAL_DISPUTED,
     EventType.DEAL_CANCELLED,
     EventType.DEAL_RESOLVED,
+    EventType.PAYMENT_PAID,
     EventType.DEAL_CONFIRMED,
     EventType.DEAL_REJECTED,
     EventType.SUBTASK_COMPLETED,
