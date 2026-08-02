@@ -81,6 +81,7 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     app.state.server = server
     app.state.jwt_service = jwt_service
     app.state.ws_manager = ws_manager
+    server.ws_manager = ws_manager
     app.state.config = config
 
     # CORS

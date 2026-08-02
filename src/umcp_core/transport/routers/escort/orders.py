@@ -9,6 +9,9 @@ from pydantic import BaseModel
 
 from umcp_core.core.base import User
 from umcp_core.core.domain import DomainTag
+from umcp_core.core.task import TaskStatus
+from umcp_core.events.bus import Event
+from umcp_core.events.types import EventType
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
 from umcp_core.transport.errors import IllegalStateError, NotFoundError
@@ -116,27 +119,43 @@ async def create_order(
             ).model_dump()
         )
 
-    # 实时单：publish + match + assign + start（不自动 complete，
-    # 等待教练接单/签到/签退后才由后续流程推进到 COMPLETED）
+    # 实时单：只 publish，等待教练抢单（抢单模式）
     try:
         server.task_repo.save(task)
         task.bind_event_bus(server.event_bus)
-        task.publish()
-        strategy = server.match_strategy_for(req.domain_tag)
-        if strategy is None:
-            raise IllegalStateError(
-                message=f"domain {req.domain_tag} 未注册匹配策略"
-            )
-        candidates = server.resource_repo.find_available(task.domain_tag)
-        result = strategy.execute(task, candidates)
-        if result.matched:
-            task.assign_to(result.selected_resource_id)
-            task.start_execution()
-        else:
-            task.cancel()
+        # 抢单模式：只过渡到 PUBLISHED（不进入 MATCHING），发 TASK_PUBLISHED 事件
+        # task.publish() 会继续推进到 MATCHING（自动匹配语义），与抢单模式不符
+        task._transition(TaskStatus.PUBLISHED)
+        task._emit(EventType.TASK_PUBLISHED)
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
+
+    # 广播给所有在线教练
+    manager = getattr(server, "ws_manager", None)
+    if manager is not None:
+        import asyncio
+        message = {
+            "type": "task.published",
+            "timestamp": datetime.utcnow().isoformat(),
+            "data": {
+                "task_id": task.task_id,
+                "demander_id": task.demander_id,
+                "origin_lat": req.origin_lat,
+                "origin_lng": req.origin_lng,
+                "car_type": req.car_type,
+                "duration_hours": req.duration_hours,
+                "coach_level_pref": req.coach_level_pref,
+            },
+        }
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(
+                manager.broadcast_to_online_coaches(message), loop
+            )
+        except RuntimeError:
+            pass  # 无事件循环时跳过（测试环境）
+
     return ok(_task_to_order_info(task).model_dump())
 
 
@@ -176,6 +195,111 @@ async def cancel_order(
         raise NotFoundError(message=f"订单 {task_id} 不存在")
     try:
         task.cancel()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.task_repo.save(task)
+    return ok(_task_to_order_info(task).model_dump())
+
+
+class ClaimRequest(BaseModel):
+    coach_id: str
+
+
+class CheckInOutRequest(BaseModel):
+    coach_id: str
+    lat: float
+    lng: float
+
+
+@router.post("/orders/{task_id}/claim", response_model=Envelope)
+async def claim_order(
+    task_id: str,
+    req: ClaimRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练抢单：published/matching → assigned。"""
+    task = server.task_repo.find_by_id(task_id)
+    if task is None:
+        raise NotFoundError(message=f"订单 {task_id} 不存在")
+    task.bind_event_bus(server.event_bus)
+    try:
+        if task.status not in ("published", "matching"):
+            raise RuntimeError(f"订单已被抢或状态不允许（当前: {task.status}）")
+        task.assign_to(req.coach_id)
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.task_repo.save(task)
+
+    # 广播给其他在线教练：订单已被抢
+    manager = getattr(server, "ws_manager", None)
+    if manager is not None:
+        import asyncio
+        message = {
+            "type": "task.claimed",
+            "timestamp": datetime.utcnow().isoformat(),
+            "data": {"task_id": task_id, "coach_id": req.coach_id},
+        }
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(
+                manager.broadcast_to_online_coaches(message), loop
+            )
+        except RuntimeError:
+            pass
+
+    return ok(_task_to_order_info(task).model_dump())
+
+
+@router.post("/orders/{task_id}/check-in", response_model=Envelope)
+async def check_in_order(
+    task_id: str,
+    req: CheckInOutRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练签到：assigned → in_progress。"""
+    task = server.task_repo.find_by_id(task_id)
+    if task is None:
+        raise NotFoundError(message=f"订单 {task_id} 不存在")
+    task.bind_event_bus(server.event_bus)
+    try:
+        task.start_execution()
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.task_repo.save(task)
+
+    # 推送签到事件给学员
+    server.event_bus.publish(
+        Event(
+            type=EventType.TASK_IN_SERVICE,
+            source_layer="ESCORT",
+            payload={
+                "task_id": task_id,
+                "demander_id": task.demander_id,
+                "coach_id": req.coach_id,
+                "lat": req.lat,
+                "lng": req.lng,
+            },
+        )
+    )
+    return ok(_task_to_order_info(task).model_dump())
+
+
+@router.post("/orders/{task_id}/check-out", response_model=Envelope)
+async def check_out_order(
+    task_id: str,
+    req: CheckInOutRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练签退：in_progress → completed。"""
+    task = server.task_repo.find_by_id(task_id)
+    if task is None:
+        raise NotFoundError(message=f"订单 {task_id} 不存在")
+    task.bind_event_bus(server.event_bus)
+    try:
+        task.complete()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)

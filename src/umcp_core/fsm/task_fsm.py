@@ -15,7 +15,7 @@ class TaskStateMachine(StateMachine):
 
     TRANSITIONS: dict[str, set[str]] = {
         TaskStatus.DRAFT: {TaskStatus.PUBLISHED, TaskStatus.CANCELLED},
-        TaskStatus.PUBLISHED: {TaskStatus.MATCHING, TaskStatus.CANCELLED},
+        TaskStatus.PUBLISHED: {TaskStatus.MATCHING, TaskStatus.ASSIGNED, TaskStatus.CANCELLED},
         TaskStatus.MATCHING: {TaskStatus.ASSIGNED, TaskStatus.CANCELLED},
         TaskStatus.ASSIGNED: {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED},
         TaskStatus.IN_PROGRESS: {TaskStatus.COMPLETED, TaskStatus.CANCELLED},
