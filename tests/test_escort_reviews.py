@@ -209,3 +209,37 @@ def test_get_reviews(client_and_server):
     data = resp.json()["data"]
     assert len(data) == 1
     assert data[0]["reviewer_role"] == "STUDENT"
+
+
+def test_review_impersonation_fails(client_and_server):
+    """用户不能替他人提交评价。"""
+    client, server = client_and_server
+    task_id = _create_completed_order(client, server, demander_id="u1")
+    resp = client.post(
+        f"/api/v1/escort/orders/{task_id}/reviews",
+        json={
+            "reviewer_id": "u_other",
+            "reviewer_role": "STUDENT",
+            "ratings": {"teaching_score": 5},
+            "comment": "",
+        },
+        headers=_auth_headers(server, "u1"),  # 当前用户是 u1，但 reviewer_id 是 u_other
+    )
+    assert resp.status_code == 403
+
+
+def test_non_participant_review_fails(client_and_server):
+    """非订单参与方不能评价。"""
+    client, server = client_and_server
+    task_id = _create_completed_order(client, server, demander_id="u1")
+    resp = client.post(
+        f"/api/v1/escort/orders/{task_id}/reviews",
+        json={
+            "reviewer_id": "u_outsider",
+            "reviewer_role": "STUDENT",
+            "ratings": {"teaching_score": 5},
+            "comment": "",
+        },
+        headers=_auth_headers(server, "u_outsider"),
+    )
+    assert resp.status_code == 403
