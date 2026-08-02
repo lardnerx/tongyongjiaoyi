@@ -52,6 +52,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[str, set[WebSocket]] = {}
         self._lock = threading.RLock()
+        self._online_coaches: set[str] = set()
 
     async def connect(self, ws: WebSocket, user: User) -> None:
         """接受连接并注册到 user_id 索引。"""
@@ -87,6 +88,29 @@ class ConnectionManager:
                         conns_set.discard(ws)
                     if not conns_set:
                         self._connections.pop(user_id, None)
+
+    def register_online_coach(self, user_id: str) -> None:
+        """注册在线教练（教练上线时调用）。"""
+        with self._lock:
+            self._online_coaches.add(user_id)
+
+    def unregister_online_coach(self, user_id: str) -> None:
+        """移除在线教练（教练下线时调用）。"""
+        with self._lock:
+            self._online_coaches.discard(user_id)
+
+    @property
+    def online_coaches(self) -> set[str]:
+        """返回当前在线教练 user_id 集合的副本。"""
+        with self._lock:
+            return set(self._online_coaches)
+
+    async def broadcast_to_online_coaches(self, message: dict[str, Any]) -> None:
+        """广播消息给所有在线教练。"""
+        with self._lock:
+            coach_ids = list(self._online_coaches)
+        for uid in coach_ids:
+            await self.send_to_user(uid, message)
 
     async def disconnect_all(self) -> None:
         """关闭所有连接（应用停止时调用）。"""
