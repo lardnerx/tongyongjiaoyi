@@ -10,6 +10,8 @@ export function middleware(request: NextRequest) {
   const publicPaths = ["/login", "/register", "/forgot-password"];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
 
+  // 受保护路径：/dashboard、/escort、/admin 等（除 publicPaths 外的全部路径）
+  // /admin 路径在此仅校验登录；admin 角色校验由前端页面运行时检查（页面加载时调用 /auth/me 检查 roles）
   // 未登录访问受保护路径 → 跳登录
   if (!authToken && !isPublicPath) {
     const loginUrl = new URL("/login", request.url);

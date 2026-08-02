@@ -91,6 +91,11 @@ export default function DashboardPage() {
               </Button>
             </>
           )}
+          {user?.roles?.includes("admin") && (
+            <Button variant="outline" onClick={() => router.push("/admin/rules")}>
+              管理后台 · 规则配置
+            </Button>
+          )}
         </div>
 
         <Button onClick={handleLogout} variant="ghost">
