@@ -67,3 +67,36 @@ class RuleConfig:
         with self._lock:
             for k, v in defaults.items():
                 self._defaults.setdefault(k, v)
+
+    def list_all(self) -> list[dict[str, Any]]:
+        """列出所有规则（合并默认值与仓储值，标记 is_default）。"""
+        with self._lock:
+            result: dict[str, dict[str, Any]] = {}
+            for k, v in self._defaults.items():
+                result[k] = {
+                    "rule_key": k,
+                    "rule_value": v,
+                    "description": None,
+                    "category": "default",
+                    "version": 0,
+                    "updated_by": None,
+                    "updated_at": None,
+                    "is_default": True,
+                }
+            for rule in self._repo.list_all():
+                result[rule["rule_key"]] = {**rule, "is_default": False}
+            return list(result.values())
+
+    def list_by_category(self, category: str) -> list[dict[str, Any]]:
+        """按分类列出规则。"""
+        return [r for r in self.list_all() if r.get("category") == category]
+
+    def history(self, key: str) -> list[dict[str, Any]]:
+        """查询规则变更历史。"""
+        with self._lock:
+            return self._repo.history(key)
+
+    def find(self, key: str) -> dict[str, Any] | None:
+        """查询单个规则完整信息（仅仓储值，不含默认值）。"""
+        with self._lock:
+            return self._repo.find_by_key(key)

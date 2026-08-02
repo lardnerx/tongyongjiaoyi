@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from umcp_core.core.base import User
 from umcp_core.server import UMCPServer
 from umcp_core.transport.auth import JwtService, user_from_claims
-from umcp_core.transport.errors import InvalidCredentialError, TokenExpiredError
+from umcp_core.transport.errors import InvalidCredentialError, PermissionDeniedError, TokenExpiredError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=True)
 
@@ -40,3 +40,10 @@ async def get_current_user(
         raise InvalidCredentialError(message="token 已吊销")
 
     return user_from_claims(payload)
+
+
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """要求当前用户具有 admin 角色，否则 403。"""
+    if "admin" not in current_user.roles:
+        raise PermissionDeniedError(message="需要管理员权限")
+    return current_user

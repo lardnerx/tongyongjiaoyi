@@ -9,7 +9,7 @@ from typing import Any
 
 import jwt as pyjwt
 
-from umcp_core.core.base import Demander, PermissionSet, Supplier, User
+from umcp_core.core.base import Demander, PermissionSet, Role, Supplier, User
 from umcp_core.core.domain import Credential
 
 
@@ -100,6 +100,8 @@ def user_from_claims(payload: dict[str, Any]) -> User:
             user.add_role(_ClaimsDemander())
         elif role_type == "supplier":
             user.add_role(_ClaimsSupplier())
+        elif role_type == "admin":
+            user.add_role(_ClaimsAdmin())
     if active_role_type and active_role_type in user.roles:
         user.switch_role(active_role_type)
     return user
@@ -117,6 +119,21 @@ class _ClaimsDemander(Demander):
 class _ClaimsSupplier(Supplier):
     def __init__(self) -> None:
         self._perms = PermissionSet({"register_resource", "accept_task", "evaluate"})
+
+    @property
+    def permissions(self) -> PermissionSet:
+        return self._perms
+
+
+class _ClaimsAdmin(Role):
+    """管理员角色（从 JWT claims 重建）。"""
+
+    def __init__(self) -> None:
+        self._perms = PermissionSet({"manage_rules"})
+
+    @property
+    def role_type(self) -> str:
+        return "admin"
 
     @property
     def permissions(self) -> PermissionSet:
