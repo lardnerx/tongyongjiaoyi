@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
+import { useDeal, useConfirmDeal, useRejectDeal } from "@/hooks/use-scheduled";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
@@ -20,11 +21,22 @@ export default function CoachOrderDetailPage() {
   const { data: reviews } = useReviews(taskId);
   const invalidate = useInvalidateOrder(taskId);
   const [actionLoading, setActionLoading] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+
+  const dealId = order?.deal_id ?? undefined;
+  const { data: deal } = useDeal(dealId);
+  const confirmDeal = useConfirmDeal();
+  const rejectDeal = useRejectDeal();
 
   useWsEvent("task.completed", () => invalidate());
   useWsEvent("task.cancelled", () => invalidate());
+  useWsEvent("deal.confirmed", () => invalidate());
+  useWsEvent("deal.rejected", () => invalidate());
+  useWsEvent("payment.paid", () => invalidate());
 
   const hasReviewed = reviews?.some((r) => r.reviewer_id === user?.user_id);
+  const isScheduled = order?.order_type === "SCHEDULED";
 
   const handleCheckIn = async () => {
     setActionLoading(true);
@@ -54,6 +66,33 @@ export default function CoachOrderDetailPage() {
     }
   };
 
+  const handleConfirm = async () => {
+    if (!dealId || !user?.user_id) return;
+    setActionLoading(true);
+    try {
+      await confirmDeal.mutateAsync({ dealId, coachId: user.user_id });
+      invalidate();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!dealId || !user?.user_id) return;
+    setActionLoading(true);
+    try {
+      await rejectDeal.mutateAsync({
+        dealId,
+        coachId: user.user_id,
+        reason: rejectReason,
+      });
+      invalidate();
+    } finally {
+      setActionLoading(false);
+      setShowReject(false);
+    }
+  };
+
   if (isLoading) return <div className="p-4">加载中...</div>;
   if (!order) return <div className="p-4">订单不存在</div>;
 
@@ -71,6 +110,10 @@ export default function CoachOrderDetailPage() {
             <OrderStatusBadge status={order.status as OrderStatus} />
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-500">类型</span>
+            <span>{isScheduled ? "预约单" : "实时单"}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-500">学员</span>
             <span>{order.demander_id}</span>
           </div>
@@ -82,10 +125,77 @@ export default function CoachOrderDetailPage() {
             <span className="text-gray-500">时长</span>
             <span>{order.duration_hours}小时</span>
           </div>
+          {isScheduled && order.scheduled_at && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">预约时间</span>
+              <span>{new Date(order.scheduled_at).toLocaleString("zh-CN")}</span>
+            </div>
+          )}
+          {deal && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">交易状态</span>
+              <span className="text-sm">{deal.status}</span>
+            </div>
+          )}
         </div>
 
-        {/* 操作按钮 */}
-        {order.status === "assigned" && (
+        {/* 预约单：待确认（deal pending + 已支付） */}
+        {isScheduled && deal?.status === "pending" && (
+          <div className="space-y-3">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800 text-sm">学员已支付定金，请确认是否接单。</p>
+            </div>
+            {!showReject ? (
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={handleConfirm}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? "确认中..." : "确认接单"}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => setShowReject(true)}
+                  disabled={actionLoading}
+                >
+                  拒绝
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  className="w-full rounded-md border border-gray-300 p-2 text-sm"
+                  placeholder="拒绝原因..."
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  rows={2}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={handleReject}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading ? "提交中..." : "确认拒绝"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowReject(false)}
+                    disabled={actionLoading}
+                  >
+                    取消
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 签到按钮（实时单 assigned 或 预约单 deal active + task assigned） */}
+        {order.status === "assigned" && (!isScheduled || deal?.status === "active") && (
           <Button className="w-full" onClick={handleCheckIn} disabled={actionLoading}>
             {actionLoading ? "签到中..." : "签到"}
           </Button>
