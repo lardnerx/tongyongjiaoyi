@@ -1,8 +1,8 @@
 import type { WSMessage } from "@/types/api";
 
-type MessageHandler = (data: Record<string, unknown>) => void;
+export type MessageHandler = (data: Record<string, unknown>) => void;
 
-interface WSClientOptions {
+export interface WSClientOptions {
   heartbeatInterval?: number;
   reconnectDelay?: number;
   maxReconnectDelay?: number;
@@ -116,3 +116,34 @@ export class WSClient {
     }
   }
 }
+
+// ========== 单例 ==========
+
+let _instance: WSClient | null = null;
+
+export const wsClient = {
+  /** 初始化 WebSocket 连接（登录后调用）。 */
+  init(url: string, token: string, options?: WSClientOptions): void {
+    if (_instance) {
+      _instance.disconnect();
+    }
+    _instance = new WSClient(url, token, options);
+  },
+  /** 订阅事件（未连接时为 no-op）。 */
+  on(eventType: string, handler: MessageHandler): void {
+    _instance?.on(eventType, handler);
+  },
+  /** 取消订阅（未连接时为 no-op）。 */
+  off(eventType: string, handler: MessageHandler): void {
+    _instance?.off(eventType, handler);
+  },
+  /** 断开连接（登出时调用）。 */
+  disconnect(): void {
+    _instance?.disconnect();
+    _instance = null;
+  },
+  /** 是否已连接。 */
+  get isConnected(): boolean {
+    return _instance !== null;
+  },
+};
