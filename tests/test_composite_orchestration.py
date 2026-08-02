@@ -184,14 +184,20 @@ class TestBridgeEvent:
             domain_tag=DomainTag.of("composite"),
             subtasks=[sub_a],
         )
-        # 记录订阅前后的 handler 数量
+        # 记录订阅前后的 handler 数量（TASK_COMPLETED 与 TASK_CANCELLED 桥接均应取消订阅）
         handlers_before = server.event_bus.handler_count(_ET.TASK_COMPLETED)
+        handlers_before_cancelled = server.event_bus.handler_count(_ET.TASK_CANCELLED)
         server.execute_composite(composite)
         # 复合任务已 COMPLETED，桥接函数应已取消订阅
         assert composite.status == TaskStatus.COMPLETED
         handlers_after = server.event_bus.handler_count(_ET.TASK_COMPLETED)
         assert handlers_after == handlers_before, (
             f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
+        )
+        handlers_after_cancelled = server.event_bus.handler_count(_ET.TASK_CANCELLED)
+        assert handlers_after_cancelled == handlers_before_cancelled, (
+            f"TASK_CANCELLED 桥接函数未取消订阅："
+            f"before={handlers_before_cancelled}, after={handlers_after_cancelled}"
         )
 
     def test_bridge_unsubscribed_after_composite_failed(self):
@@ -212,6 +218,7 @@ class TestBridgeEvent:
             subtasks=[sub_a],
         )
         handlers_before = server.event_bus.handler_count(_ET.TASK_COMPLETED)
+        handlers_before_cancelled = server.event_bus.handler_count(_ET.TASK_CANCELLED)
         server.execute_composite(composite)
         # 复合任务已 CANCELLED，桥接函数应已取消订阅
         assert composite.status == TaskStatus.CANCELLED
@@ -219,6 +226,69 @@ class TestBridgeEvent:
         assert handlers_after == handlers_before, (
             f"桥接函数未取消订阅：before={handlers_before}, after={handlers_after}"
         )
+        handlers_after_cancelled = server.event_bus.handler_count(_ET.TASK_CANCELLED)
+        assert handlers_after_cancelled == handlers_before_cancelled, (
+            f"TASK_CANCELLED 桥接函数未取消订阅："
+            f"before={handlers_before_cancelled}, after={handlers_after_cancelled}"
+        )
+
+    def test_bridge_downstream_cancel_propagation_with_dependencies(self):
+        """带 DAG 依赖的下游取消传播。
+
+        场景：子任务 A（无依赖）、子任务 B（依赖 A）。
+        取消 A → A 发出 TASK_CANCELLED → 桥接转 SUBTASK_CANCELLED →
+        父任务 _on_subtask_cancelled 级联取消 B（DRAFT→CANCELLED）→
+        B 也桥接为 SUBTASK_CANCELLED → 复合任务最终 cancelled。
+        """
+        from umcp_core.events.types import EventType as _ET
+
+        server = _make_server_with_strategy()
+
+        # 自定义执行器：将子任务推进到 IN_PROGRESS 但不 complete，
+        # 以便手动触发 cancel 验证级联传播。
+        def custom_executor(subtask):
+            subtask.publish()
+            subtask.assign_to("custom_res")
+            subtask.start_execution()
+
+        server.register_subtask_executor("ride", custom_executor)
+
+        sub_a = _make_subtask("a", domain="ride")
+        sub_b = _make_subtask("b", domain="ride")
+        composite = CompositeTask(
+            demander_id="u1",
+            domain_tag=DomainTag.of("composite"),
+            subtasks=[sub_a, sub_b],
+            dependencies={"b": ["a"]},
+        )
+
+        # 收集 SUBTASK_CANCELLED 事件以验证级联传播
+        cancelled_events: list = []
+        server.event_bus.subscribe(
+            _ET.SUBTASK_CANCELLED,
+            lambda e: cancelled_events.append(e),
+        )
+
+        server.execute_composite(composite)
+
+        # A 就绪并被派发（IN_PROGRESS），B 因依赖 A 而阻塞（DRAFT）
+        assert sub_a.status == TaskStatus.IN_PROGRESS
+        assert sub_b.status == TaskStatus.DRAFT
+
+        # 取消 A：A 发出 TASK_CANCELLED → 桥接转 SUBTASK_CANCELLED → 级联取消 B
+        sub_a.cancel()
+
+        # A 与 B 均被取消
+        assert sub_a.status == TaskStatus.CANCELLED
+        assert sub_b.status == TaskStatus.CANCELLED
+        # 复合任务最终 cancelled
+        assert composite.status == TaskStatus.CANCELLED
+        # 桥接将 A 的取消转为 SUBTASK_CANCELLED，级联将 B 的取消也转为 SUBTASK_CANCELLED
+        cancelled_subtask_ids = [
+            e.payload.get("subtask_id") for e in cancelled_events
+        ]
+        assert "a" in cancelled_subtask_ids, "A 的取消未桥接为 SUBTASK_CANCELLED"
+        assert "b" in cancelled_subtask_ids, "B 的级联取消未桥接为 SUBTASK_CANCELLED"
 
 
 class TestCustomExecutor:
