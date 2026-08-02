@@ -21,7 +21,9 @@ from umcp_core.transport.deps import get_jwt_service, get_server
 from umcp_core.transport.errors import InvalidCredentialError, register_exception_handlers
 from umcp_core.transport.metrics import MetricsMiddleware, metrics_response
 from umcp_core.transport.routers import register_routers
+from umcp_core.transport.scheduler import SchedulerService
 from umcp_core.transport.ws import ConnectionManager, make_ws_event_bridge
+from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWorker
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +63,20 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
         bridge = make_ws_event_bridge(ws_manager, loop)
         ws_bridge_ref["bridge"] = bridge
         server.event_bus.subscribe_all(bridge)
+        # 启动调度器服务（注册 RealtimeCancelWorker）
+        scheduler = SchedulerService(interval_seconds=1.0)
+        scheduler.register(RealtimeCancelWorker())
+        app.state.scheduler = scheduler
+        scheduler_task = asyncio.create_task(scheduler.start(context={"server": server}))
+        app.state.scheduler_task = scheduler_task
         logger.info("UMCP HTTP 服务已启动")
         yield
         # shutdown
+        await scheduler.stop()
+        try:
+            await asyncio.wait_for(scheduler_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            scheduler_task.cancel()
         if ws_bridge_ref["bridge"]:
             server.event_bus.unsubscribe_all(ws_bridge_ref["bridge"])
         await ws_manager.disconnect_all()
