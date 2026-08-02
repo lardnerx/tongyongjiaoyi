@@ -21,6 +21,8 @@ export interface OrderInfo {
   scheduled_at?: string | null;
   coach_level_pref?: string | null;
   deal_id?: string | null;
+  cancel_penalty?: number;
+  created_at?: string;
 }
 
 /** 评价信息。 */
@@ -85,4 +87,17 @@ export interface DealStatusInfo {
   deal_id: string;
   status: string;
   task_id: string;
+}
+
+/** 取消规则配置。 */
+export interface CancelRules {
+  timeout_seconds: number;
+  expand_after_seconds: number;
+  penalty_tiers: PenaltyTier[];
+}
+
+/** 罚分梯度档位。 */
+export interface PenaltyTier {
+  hours_before: number;
+  penalty: number;
 }
