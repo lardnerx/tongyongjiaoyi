@@ -13,7 +13,7 @@ from umcp_core.core.domain import Credential
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_jwt_service, get_server
 from umcp_core.transport.auth import JwtService, user_from_claims
-from umcp_core.transport.errors import InvalidCredentialError
+from umcp_core.transport.errors import IllegalStateError, InvalidCredentialError
 from umcp_core.transport.schemas import Envelope, ok
 
 router = APIRouter()
@@ -124,3 +124,22 @@ async def me(current_user: User = Depends(get_current_user)) -> Envelope[UserInf
         active_role=active,
     )
     return ok(info)
+
+
+class SwitchRoleRequest(BaseModel):
+    role: str
+
+
+@router.post("/switch-role", response_model=Envelope[TokenResponse])
+async def switch_role(
+    req: SwitchRoleRequest,
+    current_user: User = Depends(get_current_user),
+    jwt_service: JwtService = Depends(get_jwt_service),
+) -> Envelope[TokenResponse]:
+    """切换当前活动角色，返回新 token 对。"""
+    try:
+        current_user.switch_role(req.role)
+    except ValueError as e:
+        raise IllegalStateError(message=str(e)) from e
+    tokens = jwt_service.issue(current_user)
+    return ok(tokens)
