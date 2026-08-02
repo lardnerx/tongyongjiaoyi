@@ -28,8 +28,12 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken, refreshToken, isAuthenticated: true });
         document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure()}`;
       },
-      setUser: (user) =>
-        set({ user, activeRole: user.active_role }),
+      setUser: (user) => {
+        set({ user, activeRole: user.active_role });
+        if (user.active_role) {
+          document.cookie = `active-role=${user.active_role}; path=/; max-age=3600; samesite=lax${secure()}`;
+        }
+      },
       setActiveRole: (role) => {
         set({ activeRole: role });
         document.cookie = `active-role=${role}; path=/; max-age=3600; samesite=lax${secure()}`;

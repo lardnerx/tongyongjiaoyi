@@ -76,7 +76,7 @@ describe("auth-store", () => {
     expect(document.cookie).not.toContain("active-role=supplier");
   });
 
-  it("setUser sets activeRole from user.active_role", () => {
+  it("setUser sets activeRole from user.active_role and syncs cookie", () => {
     const user = {
       user_id: "u1",
       name: "Test",
@@ -85,5 +85,6 @@ describe("auth-store", () => {
     };
     useAuthStore.getState().setUser(user);
     expect(useAuthStore.getState().activeRole).toBe("demander");
+    expect(document.cookie).toContain("active-role=demander");
   });
 });
