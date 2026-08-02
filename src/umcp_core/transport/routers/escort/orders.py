@@ -52,7 +52,7 @@ class CreateOrderRequest(BaseModel):
 
 
 class OrderInfo(BaseModel):
-    """订单信息（实时单）。"""
+    """订单信息（实时单/预约单通用）。"""
 
     task_id: str
     order_type: str
@@ -62,6 +62,9 @@ class OrderInfo(BaseModel):
     duration_hours: int
     assigned_resource_id: str | None = None
     title: str | None = None
+    scheduled_at: str | None = None
+    coach_level_pref: str | None = None
+    deal_id: str | None = None
 
 
 class ScheduledOrderInfo(BaseModel):
@@ -82,6 +85,9 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         duration_hours=task.structured_fields.get("duration_hours", 0),
         assigned_resource_id=task.assigned_resource_id,
         title=task.title,
+        scheduled_at=task.structured_fields.get("scheduled_at"),
+        coach_level_pref=task.structured_fields.get("coach_level_pref"),
+        deal_id=None,  # 由调用方按需填充（get_order 反查 deal_repo）
     )
 
 
@@ -188,7 +194,13 @@ async def get_order(
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
-    return ok(_task_to_order_info(task).model_dump())
+    info = _task_to_order_info(task)
+    # 预约单反查 deal_id
+    if task.order_type == "SCHEDULED":
+        deals = server.deal_repo.find_by_task(task_id)
+        if deals:
+            info.deal_id = deals[-1].deal_id  # 取最新 deal
+    return ok(info.model_dump())
 
 
 @router.post("/orders/{task_id}/cancel", response_model=Envelope)
@@ -322,3 +334,99 @@ async def check_out_order(
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
     return ok(_task_to_order_info(task).model_dump())
+
+
+class SelectCoachRequest(BaseModel):
+    resource_id: str
+
+
+class SelectCoachResponse(BaseModel):
+    deal_id: str
+    task_id: str
+    resource_id: str
+    status: str
+    deposit_amount: float
+
+
+@router.post("/orders/{task_id}/select-coach", response_model=Envelope)
+async def select_coach(
+    task_id: str,
+    req: SelectCoachRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """预约单：学员选择教练，创建 Deal(pending)。"""
+    task = server.task_repo.find_by_id(task_id)
+    if task is None:
+        raise NotFoundError(message=f"订单 {task_id} 不存在")
+    if task.order_type != "SCHEDULED":
+        raise IllegalStateError(message="仅预约单支持选教练")
+    if task.status != TaskStatus.DRAFT:
+        raise IllegalStateError(message=f"订单状态 {task.status} 不允许选教练")
+
+    # 校验 resource_id 在候选列表中（重新匹配验证）
+    strategy = server.scheduled_match_strategy_for(task.domain_tag.value)
+    if strategy is not None:
+        candidates = server.resource_repo.list_all()
+        domain_candidates = [r for r in candidates if r.domain_tag.value == task.domain_tag.value]
+        result = strategy.execute(task, domain_candidates)
+        if req.resource_id not in result.candidates:
+            raise PermissionDeniedError(message="所选教练不在候选列表中")
+
+    resource = server.resource_repo.find_by_id(req.resource_id)
+    if resource is None:
+        raise NotFoundError(message=f"教练 {req.resource_id} 不存在")
+
+    # task: draft → published → assigned
+    task.bind_event_bus(server.event_bus)
+    try:
+        task.publish_for_claim()
+        task.assign_to(req.resource_id)
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    server.task_repo.save(task)
+
+    # 计算定金：用 PaymentSchema 算总价，再取 30%
+    from umcp_core.core.deal import Deal
+    deal = Deal(
+        task_id=task.task_id,
+        resource_id=req.resource_id,
+        demander_id=task.demander_id,
+        supplier_id=resource.supplier_id,
+    )
+    deal.bind_event_bus(server.event_bus)
+
+    schema = server.payment_schema_for(task.domain_tag.value)
+    if schema is not None:
+        payment_order = schema.calculate(task, deal)
+        deposit_amount = round(payment_order.total_amount * 0.3, 2)
+        deal.final_amount = payment_order.total_amount
+    else:
+        deposit_amount = 0.0
+
+    server.deal_repo.save(deal)
+
+    # 发布 DEAL_CREATED 事件（payload 含 supplier_id 供 WS 推送给教练）
+    server.event_bus.publish(
+        Event(
+            type=EventType.DEAL_CREATED,
+            source_layer="ESCORT",
+            payload={
+                "deal_id": deal.deal_id,
+                "task_id": deal.task_id,
+                "demander_id": deal.demander_id,
+                "supplier_id": deal.supplier_id,
+                "deposit_amount": deposit_amount,
+            },
+        )
+    )
+
+    return ok(
+        SelectCoachResponse(
+            deal_id=deal.deal_id,
+            task_id=task.task_id,
+            resource_id=req.resource_id,
+            status=deal.status,
+            deposit_amount=deposit_amount,
+        ).model_dump()
+    )
