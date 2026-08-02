@@ -92,3 +92,54 @@ def test_get_rule_detail_not_found(app_client):
         headers=_admin_headers(server),
     )
     assert resp.status_code == 404
+
+
+def test_update_rule_changes_value(app_client):
+    """admin 更新规则值后应反映在新值中。"""
+    client, server = app_client
+    resp = client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 120, "reason": "延长超时时间"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["rule_value"] == 120
+    assert data["version"] >= 1
+
+    # 验证 get 也返回新值
+    resp2 = client.get(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+    )
+    assert resp2.json()["data"]["rule_value"] == 120
+
+
+def test_update_rule_records_history(app_client):
+    """更新规则应产生历史记录。"""
+    client, server = app_client
+    client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 90, "reason": "测试历史"},
+    )
+    resp = client.get(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/history",
+        headers=_admin_headers(server),
+    )
+    assert resp.status_code == 200
+    history = resp.json()["data"]
+    assert len(history) >= 1
+    assert history[-1]["new_value"] == 90
+    assert history[-1]["change_reason"] == "测试历史"
+
+
+def test_update_rule_requires_reason(app_client):
+    """更新规则时 reason 不可为空。"""
+    client, server = app_client
+    resp = client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 120, "reason": ""},
+    )
+    assert resp.status_code == 422

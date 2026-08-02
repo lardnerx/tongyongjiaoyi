@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from umcp_core.core.base import User
 from umcp_core.server import UMCPServer
@@ -65,6 +65,41 @@ async def get_rule(
         if r["rule_key"] == rule_key:
             return ok(_to_response(r).model_dump())
     raise NotFoundError(message=f"规则 {rule_key} 不存在")
+
+
+class UpdateRuleRequest(BaseModel):
+    """更新规则请求。"""
+
+    value: Any
+    reason: str = Field(min_length=1)
+
+
+@router.put("/rules/{rule_key}", response_model=Envelope)
+async def update_rule(
+    rule_key: str,
+    req: UpdateRuleRequest,
+    server: UMCPServer = Depends(get_server),
+    admin: User = Depends(require_admin),
+) -> Envelope:
+    """更新规则值。"""
+    rule_config = getattr(server, "rule_config", None)
+    if rule_config is None:
+        raise IllegalStateError(message="规则配置中心未注册")
+    # 获取当前 category（若规则不存在则用 default）
+    existing = rule_config.find(rule_key)
+    category = existing["category"] if existing else "default"
+    description = existing["description"] if existing else None
+    rule_config.set(
+        key=rule_key,
+        value=req.value,
+        updated_by=admin.user_id,
+        category=category,
+        description=description,
+        reason=req.reason,
+    )
+    # 返回更新后的规则
+    updated = rule_config.find(rule_key)
+    return ok(_to_response({**updated, "is_default": False}).model_dump())
 
 
 def _to_response(rule: dict[str, Any]) -> RuleItemResponse:
