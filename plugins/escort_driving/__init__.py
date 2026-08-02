@@ -63,3 +63,13 @@ def register_plugin(server: "UMCPServer") -> None:
         domain,
         ScheduledMatchStrategy(top_n=3),
     )
+    # 注册支付服务（MockGateway + 内存仓储，挂载到 server.payment_service）
+    from umcp_core.shared.payment.mock import MockGateway
+    from umcp_core.shared.payment.repository import InMemoryPaymentRepository
+    from umcp_core.shared.payment.service import PaymentService
+
+    server.payment_service = PaymentService(
+        gateway=MockGateway(),
+        repo=InMemoryPaymentRepository(),
+        event_bus=server.event_bus,
+    )

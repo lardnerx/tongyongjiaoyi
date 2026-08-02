@@ -1,6 +1,19 @@
 """陪驾插件注册 ScheduledMatchStrategy 测试。"""
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture
+def server_with_escort():
+    """带陪驾插件注册的 UMCPServer（内存仓储）。"""
+    from umcp_core.server import UMCPServer
+    from plugins.escort_driving import register_plugin
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    register_plugin(server)
+    return server
+
 
 def test_server_supports_scheduled_match_strategy_registration():
     from umcp_core.server import UMCPServer
@@ -28,3 +41,27 @@ def test_escort_plugin_registers_scheduled_match_strategy():
     register_plugin(server)
     strategy = server.scheduled_match_strategy_for("escort")
     assert strategy is not None
+
+
+def test_payment_service_registered(server_with_escort):
+    """register_plugin 应将 PaymentService 挂载到 server.payment_service。"""
+    from umcp_core.shared.payment.service import PaymentService
+    assert hasattr(server_with_escort, "payment_service")
+    assert isinstance(server_with_escort.payment_service, PaymentService)
+
+
+def test_payment_service_uses_event_bus(server_with_escort):
+    """PaymentService 应共享 server.event_bus，事件能被订阅者收到。"""
+    received = []
+    server_with_escort.event_bus.subscribe_all(lambda e: received.append(e))
+
+    from umcp_core.shared.payment.base import PaymentType
+    server_with_escort.payment_service.create_payment(
+        deal_id="deal_test", user_id="u1", amount=48.0, payment_type=PaymentType.DEPOSIT
+    )
+    server_with_escort.payment_service.confirm_payment(
+        payment_id=server_with_escort.payment_service.repo.find_by_deal("deal_test")[0]["payment_id"]
+    )
+
+    types = [e.type.value for e in received]
+    assert "payment.paid" in types
