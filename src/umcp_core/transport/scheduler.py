@@ -34,7 +34,6 @@ class SchedulerService:
         self._interval = interval_seconds
         self._workers: list[Worker] = []
         self._stop_event: asyncio.Event | None = None
-        self._task: asyncio.Task | None = None
 
     def register(self, worker: Worker) -> None:
         """注册 worker。"""
