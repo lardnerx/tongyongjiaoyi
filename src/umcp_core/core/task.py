@@ -100,7 +100,7 @@ class Task(ABC):
         if TaskStatus.is_terminal(self.status):
             raise RuntimeError(f"任务已处于终态 {self.status}，无法取消")
         self._transition(TaskStatus.CANCELLED)
-        self._emit(EventType.TASK_COMPLETED, payload={"cancelled": True})
+        self._emit(EventType.TASK_CANCELLED, payload={"cancelled": True})
 
     def complete(self) -> None:
         """完成任务。"""
