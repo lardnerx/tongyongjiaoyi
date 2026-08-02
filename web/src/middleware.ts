@@ -4,12 +4,9 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 从 cookie 读取 auth-token（Zustand persist 默认存 localStorage，
-  // 但 middleware 运行在 Edge Runtime 无法访问 localStorage，
-  // 所以通过 cookie 传递认证状态——需在 auth-store 中同步写入 cookie）
   const authToken = request.cookies.get("auth-token")?.value;
+  const activeRole = request.cookies.get("active-role")?.value;
 
-  // 公开路径（无需登录）
   const publicPaths = ["/login", "/register", "/forgot-password"];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
 
@@ -22,6 +19,14 @@ export function middleware(request: NextRequest) {
 
   // 已登录访问登录页 → 跳 Dashboard
   if (authToken && isPublicPath) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // 角色守卫：学员不能访问教练页面，教练不能访问学员页面
+  if (pathname.startsWith("/escort/coach") && activeRole !== "supplier") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+  if (pathname.startsWith("/escort/student") && activeRole !== "demander") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

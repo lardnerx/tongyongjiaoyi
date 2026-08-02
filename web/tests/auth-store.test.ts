@@ -62,4 +62,28 @@ describe("auth-store", () => {
     const parsed = JSON.parse(stored!);
     expect(parsed.state.accessToken).toBe("access_persist");
   });
+
+  it("setActiveRole stores role and syncs cookie", () => {
+    useAuthStore.getState().setActiveRole("supplier");
+    expect(useAuthStore.getState().activeRole).toBe("supplier");
+    expect(document.cookie).toContain("active-role=supplier");
+  });
+
+  it("logout clears activeRole and cookie", () => {
+    useAuthStore.getState().setActiveRole("supplier");
+    useAuthStore.getState().logout();
+    expect(useAuthStore.getState().activeRole).toBeNull();
+    expect(document.cookie).not.toContain("active-role=supplier");
+  });
+
+  it("setUser sets activeRole from user.active_role", () => {
+    const user = {
+      user_id: "u1",
+      name: "Test",
+      roles: ["demander"],
+      active_role: "demander",
+    };
+    useAuthStore.getState().setUser(user);
+    expect(useAuthStore.getState().activeRole).toBe("demander");
+  });
 });

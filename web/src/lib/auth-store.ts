@@ -7,10 +7,14 @@ interface AuthState {
   refreshToken: string | null;
   user: UserInfo | null;
   isAuthenticated: boolean;
+  activeRole: string | null;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: UserInfo) => void;
+  setActiveRole: (role: string) => void;
   logout: () => void;
 }
+
+const secure = () => (process.env.NODE_ENV === "production" ? "; secure" : "");
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -19,21 +23,27 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       user: null,
       isAuthenticated: false,
+      activeRole: null,
       setTokens: (accessToken, refreshToken) => {
         set({ accessToken, refreshToken, isAuthenticated: true });
-        // 同步 cookie 供 middleware 读取
-        const secure = process.env.NODE_ENV === "production" ? "; secure" : "";
-        document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure}`;
+        document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure()}`;
       },
-      setUser: (user) => set({ user }),
+      setUser: (user) =>
+        set({ user, activeRole: user.active_role }),
+      setActiveRole: (role) => {
+        set({ activeRole: role });
+        document.cookie = `active-role=${role}; path=/; max-age=3600; samesite=lax${secure()}`;
+      },
       logout: () => {
         set({
           accessToken: null,
           refreshToken: null,
           user: null,
           isAuthenticated: false,
+          activeRole: null,
         });
         document.cookie = "auth-token=; path=/; max-age=0";
+        document.cookie = "active-role=; path=/; max-age=0";
       },
     }),
     {
@@ -43,6 +53,7 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        activeRole: state.activeRole,
       }),
     }
   )
