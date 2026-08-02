@@ -86,6 +86,15 @@ class Task(ABC):
         self._transition(TaskStatus.MATCHING)
         self._emit(EventType.TASK_PUBLISHED)
 
+    def publish_for_claim(self) -> None:
+        """发布任务但不进入 MATCHING 状态（抢单模式专用）。
+
+        与 publish() 不同，只过渡到 PUBLISHED 状态，
+        等待教练主动抢单（claim）后才进入 ASSIGNED。
+        """
+        self._transition(TaskStatus.PUBLISHED)
+        self._emit(EventType.TASK_PUBLISHED)
+
     def cancel(self) -> None:
         """取消任务。"""
         if TaskStatus.is_terminal(self.status):

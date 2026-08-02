@@ -1,6 +1,8 @@
 """实时单抢单流程测试。"""
 from __future__ import annotations
 
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -148,3 +150,108 @@ def test_check_out_transitions_to_completed(client_and_server):
     )
     assert resp.status_code == 200
     assert resp.json()["data"]["status"] == "completed"
+
+
+# ---------- 越权校验测试 ----------
+
+
+def test_claim_for_other_coach_fails(client_and_server):
+    """越权抢单：coach_1 不能为 coach_2 抢单，返回 403。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    resp = client.post(
+        f"/api/v1/escort/orders/{task_id}/claim",
+        json={"coach_id": "coach_2"},
+        headers=_auth_headers(server, "coach_1", roles=["supplier"]),
+    )
+    assert resp.status_code == 403
+
+
+def test_check_in_for_other_coach_fails(client_and_server):
+    """越权签到：coach_2 不能为 coach_1 签到，返回 403。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    client.post(
+        f"/api/v1/escort/orders/{task_id}/claim",
+        json={"coach_id": "coach_1"},
+        headers=_auth_headers(server, "coach_1", roles=["supplier"]),
+    )
+    resp = client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": "coach_1", "lat": 39.9, "lng": 116.4},
+        headers=_auth_headers(server, "coach_2", roles=["supplier"]),
+    )
+    assert resp.status_code == 403
+
+
+def test_check_out_for_other_coach_fails(client_and_server):
+    """越权签退：coach_2 不能为 coach_1 签退，返回 403。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    client.post(
+        f"/api/v1/escort/orders/{task_id}/claim",
+        json={"coach_id": "coach_1"},
+        headers=_auth_headers(server, "coach_1", roles=["supplier"]),
+    )
+    client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": "coach_1", "lat": 39.9, "lng": 116.4},
+        headers=_auth_headers(server, "coach_1", roles=["supplier"]),
+    )
+    resp = client.post(
+        f"/api/v1/escort/orders/{task_id}/check-out",
+        json={"coach_id": "coach_1", "lat": 39.9, "lng": 116.4},
+        headers=_auth_headers(server, "coach_2", roles=["supplier"]),
+    )
+    assert resp.status_code == 403
+
+
+# ---------- 并发抢单测试 ----------
+
+
+def test_concurrent_claim_only_one_succeeds(client_and_server):
+    """并发抢单：两个教练同时抢同一订单，只有一个成功（200），另一个失败（409）。
+
+    验证 per-task_id 锁能有效串行化抢单操作，避免竞态条件。
+    """
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+
+    # 创建两个独立 TestClient 共享同一 app（各自有独立事件循环/portal）
+    app = client.app
+    client_a = TestClient(app)
+    client_b = TestClient(app)
+
+    results: list[tuple[str, int]] = []
+    results_lock = threading.Lock()
+    barrier = threading.Barrier(2)
+
+    def claim(client_x: TestClient, coach_id: str) -> None:
+        try:
+            barrier.wait(timeout=5)
+            resp = client_x.post(
+                f"/api/v1/escort/orders/{task_id}/claim",
+                json={"coach_id": coach_id},
+                headers=_auth_headers(server, coach_id, roles=["supplier"]),
+            )
+            with results_lock:
+                results.append((coach_id, resp.status_code))
+        except Exception as e:
+            with results_lock:
+                results.append((coach_id, f"error: {e}"))
+
+    t_a = threading.Thread(target=claim, args=(client_a, "coach_1"))
+    t_b = threading.Thread(target=claim, args=(client_b, "coach_2"))
+    t_a.start()
+    t_b.start()
+    t_a.join(timeout=10)
+    t_b.join(timeout=10)
+
+    status_codes = [r[1] for r in results]
+    assert len(results) == 2, f"两个线程都应完成，实际: {results}"
+    assert status_codes.count(200) == 1, (
+        f"期望恰好一个抢单成功，实际: {results}"
+    )
+    assert status_codes.count(409) == 1, (
+        f"期望恰好一个抢单失败（409），实际: {results}"
+    )

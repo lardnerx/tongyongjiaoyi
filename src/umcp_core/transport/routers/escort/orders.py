@@ -1,6 +1,7 @@
 """陪驾订单 router（学员下单/取消/查询）。"""
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -14,11 +15,23 @@ from umcp_core.events.bus import Event
 from umcp_core.events.types import EventType
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
-from umcp_core.transport.errors import IllegalStateError, NotFoundError
+from umcp_core.transport.errors import IllegalStateError, NotFoundError, PermissionDeniedError
 from umcp_core.transport.schemas import Envelope, ok
 from plugins.escort_driving.tasks import EscortTask
 
 router = APIRouter(prefix="/api/v1/escort", tags=["escort-orders"])
+
+# per-task_id 锁，确保抢单串行化（避免并发抢单竞态条件）
+_claim_locks: dict[str, threading.Lock] = {}
+_claim_locks_guard = threading.Lock()
+
+
+def _get_claim_lock(task_id: str) -> threading.Lock:
+    """获取指定 task_id 的锁（线程安全）。"""
+    with _claim_locks_guard:
+        if task_id not in _claim_locks:
+            _claim_locks[task_id] = threading.Lock()
+        return _claim_locks[task_id]
 
 
 class CreateOrderRequest(BaseModel):
@@ -125,8 +138,7 @@ async def create_order(
         task.bind_event_bus(server.event_bus)
         # 抢单模式：只过渡到 PUBLISHED（不进入 MATCHING），发 TASK_PUBLISHED 事件
         # task.publish() 会继续推进到 MATCHING（自动匹配语义），与抢单模式不符
-        task._transition(TaskStatus.PUBLISHED)
-        task._emit(EventType.TASK_PUBLISHED)
+        task.publish_for_claim()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
@@ -134,7 +146,6 @@ async def create_order(
     # 广播给所有在线教练
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
-        import asyncio
         message = {
             "type": "task.published",
             "timestamp": datetime.utcnow().isoformat(),
@@ -149,12 +160,9 @@ async def create_order(
             },
         }
         try:
-            loop = asyncio.get_event_loop()
-            asyncio.run_coroutine_threadsafe(
-                manager.broadcast_to_online_coaches(message), loop
-            )
-        except RuntimeError:
-            pass  # 无事件循环时跳过（测试环境）
+            await manager.broadcast_to_online_coaches(message)
+        except Exception:
+            pass
 
     return ok(_task_to_order_info(task).model_dump())
 
@@ -219,33 +227,35 @@ async def claim_order(
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
     """教练抢单：published/matching → assigned。"""
-    task = server.task_repo.find_by_id(task_id)
-    if task is None:
-        raise NotFoundError(message=f"订单 {task_id} 不存在")
-    task.bind_event_bus(server.event_bus)
-    try:
-        if task.status not in ("published", "matching"):
-            raise RuntimeError(f"订单已被抢或状态不允许（当前: {task.status}）")
-        task.assign_to(req.coach_id)
-    except (RuntimeError, ValueError) as e:
-        raise IllegalStateError(message=str(e)) from e
-    server.task_repo.save(task)
+    # 越权校验：只能为自己抢单
+    if current_user.user_id != req.coach_id:
+        raise PermissionDeniedError(message="只能为自己抢单")
+
+    lock = _get_claim_lock(task_id)
+    with lock:
+        task = server.task_repo.find_by_id(task_id)
+        if task is None:
+            raise NotFoundError(message=f"订单 {task_id} 不存在")
+        task.bind_event_bus(server.event_bus)
+        try:
+            if task.status not in ("published", "matching"):
+                raise RuntimeError(f"订单已被抢或状态不允许（当前: {task.status}）")
+            task.assign_to(req.coach_id)
+        except (RuntimeError, ValueError) as e:
+            raise IllegalStateError(message=str(e)) from e
+        server.task_repo.save(task)
 
     # 广播给其他在线教练：订单已被抢
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
-        import asyncio
         message = {
             "type": "task.claimed",
             "timestamp": datetime.utcnow().isoformat(),
             "data": {"task_id": task_id, "coach_id": req.coach_id},
         }
         try:
-            loop = asyncio.get_event_loop()
-            asyncio.run_coroutine_threadsafe(
-                manager.broadcast_to_online_coaches(message), loop
-            )
-        except RuntimeError:
+            await manager.broadcast_to_online_coaches(message)
+        except Exception:
             pass
 
     return ok(_task_to_order_info(task).model_dump())
@@ -259,6 +269,10 @@ async def check_in_order(
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
     """教练签到：assigned → in_progress。"""
+    # 越权校验：只能操作自己的订单
+    if current_user.user_id != req.coach_id:
+        raise PermissionDeniedError(message="只能操作自己的订单")
+
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
@@ -294,6 +308,10 @@ async def check_out_order(
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
     """教练签退：in_progress → completed。"""
+    # 越权校验：只能操作自己的订单
+    if current_user.user_id != req.coach_id:
+        raise PermissionDeniedError(message="只能操作自己的订单")
+
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
