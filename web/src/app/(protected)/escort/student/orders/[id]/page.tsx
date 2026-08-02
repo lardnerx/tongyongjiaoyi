@@ -1,11 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
 import { useDeal, usePayment } from "@/hooks/use-scheduled";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
+import { apiClient } from "@/lib/api-client";
+import { useCancelRules } from "@/hooks/use-cancel-rules";
+import { CountdownTimer } from "@/components/countdown-timer";
+import { CancelDialog } from "@/components/cancel-dialog";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
 import { MockPayment } from "@/components/mock-payment";
@@ -40,6 +45,10 @@ export default function StudentOrderDetailPage() {
   const currentStatus = orderStatusUpdates[taskId] || order?.status;
   const hasReviewed = reviews?.some((r) => r.reviewer_id === user?.user_id);
   const isScheduled = order?.order_type === "SCHEDULED";
+
+  const cancelRules = useCancelRules();
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const scheduledPenalty = cancelRules.calculatePenalty(order?.scheduled_at ?? null);
 
   if (isLoading) return <div className="p-4">加载中...</div>;
   if (!order) return <div className="p-4">订单不存在</div>;
@@ -91,8 +100,14 @@ export default function StudentOrderDetailPage() {
 
         {/* 实时单：等待接单 */}
         {!isScheduled && currentStatus === "published" && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-            <p className="text-yellow-800">等待教练接单...</p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-yellow-800 text-sm">等待教练抢单</span>
+              <CountdownTimer
+                createdAt={order.created_at ?? new Date().toISOString()}
+                timeoutSeconds={cancelRules.data?.timeout_seconds ?? 60}
+              />
+            </div>
           </div>
         )}
 
@@ -139,6 +154,29 @@ export default function StudentOrderDetailPage() {
             <p className="text-green-800">已评价</p>
           </div>
         )}
+
+        {/* 取消按钮（非终态均可显示） */}
+        {currentStatus !== "completed" && currentStatus !== "cancelled" && (
+          <Button
+            variant="outline"
+            className="w-full text-red-600 border-red-300"
+            onClick={() => setShowCancelDialog(true)}
+          >
+            取消订单
+          </Button>
+        )}
+
+        <CancelDialog
+          open={showCancelDialog}
+          orderType={order.order_type as "REALTIME" | "SCHEDULED"}
+          penalty={isScheduled ? scheduledPenalty : 0}
+          onConfirm={async () => {
+            await apiClient.post(`/escort/orders/${taskId}/cancel`, {});
+            setShowCancelDialog(false);
+            invalidate();
+          }}
+          onClose={() => setShowCancelDialog(false)}
+        />
       </div>
     </div>
   );
