@@ -163,12 +163,15 @@ def test_get_order_detail(authed_client):
     assert resp.json()["data"]["task_id"] == task_id
 
 
-def test_cancel_order(authed_client):
+def test_cancel_order(authed_client, jwt_service):
     """学员取消订单。"""
+    # 权限校验要求 demander_id 与登录用户一致，从 JWT 解析 user_id
+    token = authed_client.headers["Authorization"].replace("Bearer ", "")
+    user_id = jwt_service.decode(token)["sub"]
     create_resp = authed_client.post(
         "/api/v1/escort/orders",
         json={
-            "demander_id": "student_1",
+            "demander_id": user_id,
             "domain_tag": "escort",
             "origin_lat": 39.9042,
             "origin_lng": 116.4074,

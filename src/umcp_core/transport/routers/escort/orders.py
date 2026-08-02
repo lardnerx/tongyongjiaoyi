@@ -65,6 +65,8 @@ class OrderInfo(BaseModel):
     scheduled_at: str | None = None
     coach_level_pref: str | None = None
     deal_id: str | None = None
+    cancel_penalty: float = 0.0
+    created_at: str | None = None
 
 
 class ScheduledOrderInfo(BaseModel):
@@ -88,7 +90,38 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         scheduled_at=task.structured_fields.get("scheduled_at"),
         coach_level_pref=task.structured_fields.get("coach_level_pref"),
         deal_id=None,  # 由调用方按需填充（get_order 反查 deal_repo）
+        created_at=task.created_at.isoformat() if task.created_at else None,
     )
+
+
+def _calculate_scheduled_penalty(
+    rule_config,
+    scheduled_at: datetime | None,
+    now: datetime | None = None,
+) -> float:
+    """根据预约单取消规则计算罚分。
+
+    Args:
+        rule_config: RuleConfig 实例（可为 None，返回 0）
+        scheduled_at: 预约时间
+        now: 当前时间（测试可注入），默认 datetime.utcnow()
+
+    Returns:
+        罚分分值（0.0 表示无罚分）
+    """
+    if rule_config is None or scheduled_at is None:
+        return 0.0
+    tiers = rule_config.get("escort.cancel.scheduled.penalty_tiers")
+    if not tiers or not isinstance(tiers, list):
+        return 0.0
+    now = now or datetime.utcnow()
+    hours_before = (scheduled_at - now).total_seconds() / 3600.0
+    # 找到第一个 hours_before >= tier.hours_before 的档位
+    for tier in tiers:
+        if hours_before >= tier.get("hours_before", 0):
+            return float(tier.get("penalty", 0.0))
+    # 所有档位都不匹配（理论上最后 hours_before=0 档会兜底）
+    return 0.0
 
 
 @router.post("/orders", response_model=Envelope)
@@ -209,16 +242,68 @@ async def cancel_order(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """学员取消订单。"""
+    """学员取消订单。
+
+    - 实时单：无罚分，直接 task.cancel()
+    - 预约单：按规则梯度扣信用分；若已支付定金则触发退款
+    """
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
+    if task.demander_id != current_user.user_id:
+        raise PermissionDeniedError(message="只能取消自己的订单")
+
+    rule_config = getattr(server, "rule_config", None)
+    penalty = 0.0
+
+    # 预约单：计算罚分并扣除信用分
+    if task.order_type == "SCHEDULED":
+        scheduled_at = task.scheduled_at
+        penalty = _calculate_scheduled_penalty(rule_config, scheduled_at)
+        if penalty > 0:
+            engine = server.trust_engine_for(task.domain_tag.value)
+            if engine is not None:
+                engine.apply_penalty(
+                    task.demander_id, penalty, reason="预约单取消"
+                )
+
+    # 取消 task
+    task.bind_event_bus(server.event_bus)
     try:
         task.cancel()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
-    return ok(_task_to_order_info(task).model_dump())
+
+    # 预约单：取消 deal 并退款
+    if task.order_type == "SCHEDULED":
+        deals = server.deal_repo.find_by_task(task_id)
+        payment_service = getattr(server, "payment_service", None)
+        for deal in deals:
+            if deal.status in ("pending", "active"):
+                deal.bind_event_bus(server.event_bus)
+                try:
+                    deal.cancel()
+                    server.deal_repo.save(deal)
+                except (RuntimeError, ValueError):
+                    pass
+            # 退款已支付的定金
+            if payment_service is not None:
+                records = payment_service.repo.find_by_deal(deal.deal_id)
+                for record in records:
+                    if record["status"] == "paid":
+                        try:
+                            payment_service.refund(
+                                payment_id=record["payment_id"],
+                                amount=record["amount"],
+                                reason="学员取消预约单",
+                            )
+                        except Exception:
+                            pass
+
+    info = _task_to_order_info(task)
+    info.cancel_penalty = penalty
+    return ok(info.model_dump())
 
 
 class ClaimRequest(BaseModel):
