@@ -67,5 +67,13 @@ class EventType(str, Enum):
     CHECK_IN = "check_in"
     CHECK_OUT = "check_out"
 
+    # 实时单抢单（阶段三扩展）
+    TASK_CLAIMED = "task.claimed"
+    TASK_IN_SERVICE = "task.in_service"
+
+    # 预约单确认（阶段三扩展）
+    DEAL_CONFIRMED = "deal.confirmed"
+    DEAL_REJECTED = "deal.rejected"
+
     # 支付（陪驾 MVP 扩展）
     PAYMENT_PAID = "payment.paid"

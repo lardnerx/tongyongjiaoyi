@@ -23,6 +23,8 @@ WS_PUSHABLE_EVENTS: set[EventType] = {
     EventType.TASK_ASSIGNED,
     EventType.TASK_COMPLETED,
     EventType.TASK_CANCELLED,
+    EventType.TASK_CLAIMED,
+    EventType.TASK_IN_SERVICE,
     EventType.RESOURCE_REGISTERED,
     EventType.RESOURCE_STATUS_CHANGED,
     EventType.DEAL_CREATED,
@@ -31,11 +33,16 @@ WS_PUSHABLE_EVENTS: set[EventType] = {
     EventType.DEAL_DISPUTED,
     EventType.DEAL_CANCELLED,
     EventType.DEAL_RESOLVED,
+    EventType.DEAL_CONFIRMED,
+    EventType.DEAL_REJECTED,
     EventType.SUBTASK_COMPLETED,
     EventType.SUBTASK_CANCELLED,
     EventType.TRUST_UPDATED,
     EventType.ANOMALY_DETECTED,
     EventType.DISPUTE_OPENED,
+    EventType.REVIEW_SUBMITTED,
+    EventType.CHECK_IN,
+    EventType.CHECK_OUT,
 }
 
 
