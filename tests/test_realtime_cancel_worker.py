@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from umcp_core.core.domain import DomainTag
 from umcp_core.events.bus import EventBus
 from umcp_core.events.types import EventType
 from umcp_core.server import UMCPServer
@@ -14,7 +13,6 @@ from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWor
 
 def _make_realtime_task(
     created_seconds_ago: int,
-    domain: str = "escort",
 ) -> "EscortTask":
     from plugins.escort_driving.tasks import EscortTask
 

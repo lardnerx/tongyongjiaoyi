@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from umcp_core.core.domain import DomainTag
 from umcp_core.core.task import TaskStatus
 
 logger = logging.getLogger(__name__)
