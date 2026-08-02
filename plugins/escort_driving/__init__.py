@@ -73,3 +73,21 @@ def register_plugin(server: "UMCPServer") -> None:
         repo=InMemoryPaymentRepository(),
         event_bus=server.event_bus,
     )
+    # 注册规则配置中心（内存仓储 + 默认值预加载，挂载到 server.rule_config）
+    from umcp_core.shared.rules.config import RuleConfig
+    from umcp_core.shared.rules.repository import InMemoryRuleRepository
+
+    rule_config = RuleConfig(repo=InMemoryRuleRepository())
+    rule_config.set_defaults(
+        {
+            "escort.cancel.realtime.timeout_seconds": 60,
+            "escort.cancel.realtime.expand_after_seconds": 30,
+            "escort.cancel.scheduled.penalty_tiers": [
+                {"hours_before": 24, "penalty": 0.2},
+                {"hours_before": 12, "penalty": 0.5},
+                {"hours_before": 4, "penalty": 1.0},
+                {"hours_before": 0, "penalty": 2.0},
+            ],
+        }
+    )
+    server.rule_config = rule_config
