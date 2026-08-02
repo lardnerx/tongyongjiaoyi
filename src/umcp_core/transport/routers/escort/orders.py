@@ -306,6 +306,39 @@ async def cancel_order(
     return ok(info.model_dump())
 
 
+class CancelRulesResponse(BaseModel):
+    """取消规则响应。"""
+
+    timeout_seconds: int
+    expand_after_seconds: int
+    penalty_tiers: list[dict[str, Any]]
+
+
+@router.get("/cancel-rules", response_model=Envelope)
+async def get_cancel_rules(
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """返回当前取消规则配置（供前端倒计时与罚分提示）。"""
+    rule_config = getattr(server, "rule_config", None)
+    if rule_config is None:
+        raise IllegalStateError(message="规则配置中心未注册")
+
+    return ok(
+        CancelRulesResponse(
+            timeout_seconds=rule_config.get(
+                "escort.cancel.realtime.timeout_seconds", default=60
+            ),
+            expand_after_seconds=rule_config.get(
+                "escort.cancel.realtime.expand_after_seconds", default=30
+            ),
+            penalty_tiers=rule_config.get(
+                "escort.cancel.scheduled.penalty_tiers", default=[]
+            ),
+        ).model_dump()
+    )
+
+
 class ClaimRequest(BaseModel):
     coach_id: str
 
