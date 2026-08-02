@@ -78,3 +78,32 @@ def test_apply_penalty_accumulates():
     profile = engine.evaluate("student1")
     # 5.0 - 1.0 - 2.0 = 2.0
     assert profile.overall_score == 2.0
+
+
+def test_apply_penalty_returns_updated_profile():
+    """apply_penalty 应返回更新后的 profile。"""
+    engine = WeightedSumTrustEngine(dimensions=["overall"])
+    engine.record_evaluation(Evaluation(
+        evaluator_id="coach1",
+        evaluatee_id="student1",
+        task_id="t1",
+        ratings={"overall": 4.0},
+        comment="",
+    ))
+    returned = engine.apply_penalty("student1", 1.5, reason="取消")
+    assert returned.overall_score == 2.5  # 验证返回值而非另调 evaluate
+
+
+def test_apply_penalty_zero_points_ignored():
+    """零分应被忽略。"""
+    engine = WeightedSumTrustEngine(dimensions=["overall"])
+    engine.record_evaluation(Evaluation(
+        evaluator_id="coach1",
+        evaluatee_id="student1",
+        task_id="t1",
+        ratings={"overall": 4.0},
+        comment="",
+    ))
+    engine.apply_penalty("student1", 0.0, reason="零分")
+    profile = engine.evaluate("student1")
+    assert profile.overall_score == 4.0

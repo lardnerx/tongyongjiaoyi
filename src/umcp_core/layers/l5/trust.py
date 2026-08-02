@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -118,30 +119,33 @@ class WeightedSumTrustEngine(TrustEngine):
         self.risk_weight: RiskWeight = risk_weight or RiskWeight()
         self._profiles: dict[str, TrustProfile] = {}
         self._penalties: dict[str, float] = {}
+        self._lock = threading.RLock()
 
     def evaluate(self, user_id: str, context: Task | None = None) -> TrustProfile:
-        if user_id not in self._profiles:
-            self._profiles[user_id] = TrustProfile(user_id=user_id)
-            for dim in self.dimensions:
-                self._profiles[user_id].update_dimension(dim, 0.0)
-        profile = self._profiles[user_id]
-        # 应用累计扣分（不影响维度分，只降 overall_score，不低于 0）
-        penalty = self._penalties.get(user_id, 0.0)
-        if profile.dimension_scores:
-            raw = sum(profile.dimension_scores.values()) / len(profile.dimension_scores)
-        else:
-            raw = 0.0
-        profile.overall_score = max(0.0, raw - penalty)
-        return profile
+        with self._lock:
+            if user_id not in self._profiles:
+                self._profiles[user_id] = TrustProfile(user_id=user_id)
+                for dim in self.dimensions:
+                    self._profiles[user_id].update_dimension(dim, 0.0)
+            profile = self._profiles[user_id]
+            # 应用累计扣分（不影响维度分，只降 overall_score，不低于 0）
+            penalty = self._penalties.get(user_id, 0.0)
+            if profile.dimension_scores:
+                raw = sum(profile.dimension_scores.values()) / len(profile.dimension_scores)
+            else:
+                raw = 0.0
+            profile.overall_score = max(0.0, raw - penalty)
+            return profile
 
     def record_evaluation(self, evaluation: Evaluation) -> TrustProfile:
-        profile = self.evaluate(evaluation.evaluatee_id)
-        for dim, score in evaluation.ratings.items():
-            current = profile.dimension_scores.get(dim, 0.0)
-            # 简单移动平均：新旧各占 50%
-            new_score = (current + score) / 2 if current > 0 else score
-            profile.update_dimension(dim, new_score)
-        return self.evaluate(evaluation.evaluatee_id)
+        with self._lock:
+            profile = self.evaluate(evaluation.evaluatee_id)
+            for dim, score in evaluation.ratings.items():
+                current = profile.dimension_scores.get(dim, 0.0)
+                # 简单移动平均：新旧各占 50%
+                new_score = (current + score) / 2 if current > 0 else score
+                profile.update_dimension(dim, new_score)
+            return self.evaluate(evaluation.evaluatee_id)
 
     def apply_penalty(self, user_id: str, points: float, reason: str) -> TrustProfile:
         """直接从 overall_score 扣分（不低于 0）。
@@ -149,10 +153,11 @@ class WeightedSumTrustEngine(TrustEngine):
         扣分独立于维度分累计存储，每次 evaluate 重新计算 effective overall_score。
         维度分不变（维度分反映历史评价，扣分是行为惩罚，不应抹除评价记录）。
         """
-        if points <= 0:
+        with self._lock:
+            if points <= 0:
+                return self.evaluate(user_id)
+            self._penalties[user_id] = self._penalties.get(user_id, 0.0) + points
             return self.evaluate(user_id)
-        self._penalties[user_id] = self._penalties.get(user_id, 0.0) + points
-        return self.evaluate(user_id)
 
 
 # ============================================================================
