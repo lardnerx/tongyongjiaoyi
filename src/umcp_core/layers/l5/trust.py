@@ -89,6 +89,19 @@ class TrustEngine(ABC):
     def record_evaluation(self, evaluation: Evaluation) -> TrustProfile:
         """记录评价并更新画像。"""
 
+    @abstractmethod
+    def apply_penalty(self, user_id: str, points: float, reason: str) -> TrustProfile:
+        """对用户扣分（不影响维度分，只降 overall_score，不低于 0）。
+
+        Args:
+            user_id: 被扣分用户
+            points: 扣分分值（负数视为 0，不加分）
+            reason: 扣分原因（记录用，未来可扩展审计）
+
+        Returns:
+            扣分后的最新 TrustProfile
+        """
+
 
 class WeightedSumTrustEngine(TrustEngine):
     """加权聚合信任引擎（核心库默认实现）。
@@ -104,13 +117,22 @@ class WeightedSumTrustEngine(TrustEngine):
         self.dimensions: list[str] = dimensions or ["overall"]
         self.risk_weight: RiskWeight = risk_weight or RiskWeight()
         self._profiles: dict[str, TrustProfile] = {}
+        self._penalties: dict[str, float] = {}
 
     def evaluate(self, user_id: str, context: Task | None = None) -> TrustProfile:
         if user_id not in self._profiles:
             self._profiles[user_id] = TrustProfile(user_id=user_id)
             for dim in self.dimensions:
                 self._profiles[user_id].update_dimension(dim, 0.0)
-        return self._profiles[user_id]
+        profile = self._profiles[user_id]
+        # 应用累计扣分（不影响维度分，只降 overall_score，不低于 0）
+        penalty = self._penalties.get(user_id, 0.0)
+        if profile.dimension_scores:
+            raw = sum(profile.dimension_scores.values()) / len(profile.dimension_scores)
+        else:
+            raw = 0.0
+        profile.overall_score = max(0.0, raw - penalty)
+        return profile
 
     def record_evaluation(self, evaluation: Evaluation) -> TrustProfile:
         profile = self.evaluate(evaluation.evaluatee_id)
@@ -119,7 +141,18 @@ class WeightedSumTrustEngine(TrustEngine):
             # 简单移动平均：新旧各占 50%
             new_score = (current + score) / 2 if current > 0 else score
             profile.update_dimension(dim, new_score)
-        return profile
+        return self.evaluate(evaluation.evaluatee_id)
+
+    def apply_penalty(self, user_id: str, points: float, reason: str) -> TrustProfile:
+        """直接从 overall_score 扣分（不低于 0）。
+
+        扣分独立于维度分累计存储，每次 evaluate 重新计算 effective overall_score。
+        维度分不变（维度分反映历史评价，扣分是行为惩罚，不应抹除评价记录）。
+        """
+        if points <= 0:
+            return self.evaluate(user_id)
+        self._penalties[user_id] = self._penalties.get(user_id, 0.0) + points
+        return self.evaluate(user_id)
 
 
 # ============================================================================
