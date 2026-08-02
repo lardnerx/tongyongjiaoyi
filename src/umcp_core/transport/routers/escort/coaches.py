@@ -137,3 +137,35 @@ async def check_out(
         )
     )
     return ok(_deal_to_info(deal).model_dump())
+
+
+class OnlineRequest(BaseModel):
+    lat: float
+    lng: float
+
+
+@router.post("/{coach_id}/online", response_model=Envelope)
+async def coach_online(
+    coach_id: str,
+    req: OnlineRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练上线：注册到在线教练集合。"""
+    manager = getattr(server, "ws_manager", None)
+    if manager is not None:
+        manager.register_online_coach(coach_id)
+    return ok({"coach_id": coach_id, "online": True})
+
+
+@router.post("/{coach_id}/offline", response_model=Envelope)
+async def coach_offline(
+    coach_id: str,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """教练下线：从在线集合移除。"""
+    manager = getattr(server, "ws_manager", None)
+    if manager is not None:
+        manager.unregister_online_coach(coach_id)
+    return ok({"coach_id": coach_id, "online": False})
