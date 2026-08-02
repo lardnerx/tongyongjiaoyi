@@ -116,6 +116,9 @@ async def test_realtime_task_expanded_search_after_expand_after():
     # 至少广播过一次扩展邀请
     expanded = [m for m in fake_ws.broadcasts if m.get("data", {}).get("expanded") is True]
     assert len(expanded) >= 1, "应广播扩展搜索邀请"
+    # 验证坐标字段不为 None
+    assert expanded[0]["data"]["origin_lat"] is not None
+    assert expanded[0]["data"]["origin_lng"] is not None
 
 
 @pytest.mark.asyncio
@@ -138,7 +141,7 @@ async def test_expand_search_only_once_per_task():
 
 @pytest.mark.asyncio
 async def test_scheduled_task_not_affected_by_realtime_worker():
-    """预约单不应被实时单取消 worker 影响。"""
+    """预约单（即使 published）不应被实时单取消 worker 影响。"""
     server = _make_server_with_rules(timeout=60, expand_after=30)
     from plugins.escort_driving.tasks import EscortTask
 
@@ -153,10 +156,13 @@ async def test_scheduled_task_not_affected_by_realtime_worker():
         scheduled_at=datetime.utcnow() + timedelta(hours=2),
     )
     task.created_at = datetime.utcnow() - timedelta(seconds=70)
+    # 让预约单也进入 published 状态，验证 order_type 过滤而非状态过滤
+    task.bind_event_bus(server.event_bus)
+    task.publish_for_claim()
     server.task_repo.save(task)
 
     worker = RealtimeCancelWorker()
     await worker.run(context={"server": server})
 
     refreshed = server.task_repo.find_by_id(task.task_id)
-    assert refreshed.status == "draft"  # 预约单保持 draft 状态
+    assert refreshed.status == "published"  # 预约单保持 published 状态，未被取消
