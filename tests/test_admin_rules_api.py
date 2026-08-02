@@ -143,3 +143,81 @@ def test_update_rule_requires_reason(app_client):
         json={"value": 120, "reason": ""},
     )
     assert resp.status_code == 422
+
+
+def test_get_rule_history(app_client):
+    """查询规则变更历史。"""
+    client, server = app_client
+    # 先更新一次产生历史
+    client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 90, "reason": "第一次调整"},
+    )
+    client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 100, "reason": "第二次调整"},
+    )
+    resp = client.get(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/history",
+        headers=_admin_headers(server),
+    )
+    assert resp.status_code == 200
+    history = resp.json()["data"]
+    assert len(history) >= 2
+    assert history[-1]["new_value"] == 100
+    assert history[-1]["change_reason"] == "第二次调整"
+
+
+def test_rollback_rule(app_client):
+    """回滚规则到历史版本。"""
+    client, server = app_client
+    # 初始值 60，改为 90
+    client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 90, "reason": "调整"},
+    )
+    # 获取历史
+    resp = client.get(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/history",
+        headers=_admin_headers(server),
+    )
+    history = resp.json()["data"]
+    # 第一条历史记录的 old_value 为 None（首次设置），new_value 为 90
+    # 回滚到第一条意味着... 实际上 old_value 为 None 无法回滚
+    # 改为：再改一次到 100，然后回滚到第一次变更（old_value=90 → 即回滚后值=90）
+    client.put(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds",
+        headers=_admin_headers(server),
+        json={"value": 100, "reason": "再次调整"},
+    )
+    resp = client.get(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/history",
+        headers=_admin_headers(server),
+    )
+    history = resp.json()["data"]
+    # 找到 old_value 非 None 的记录（第二次变更：old=90, new=100）
+    rollback_target = next(h for h in history if h["old_value"] is not None)
+    old_val = rollback_target["old_value"]
+
+    resp = client.post(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/rollback",
+        headers=_admin_headers(server),
+        json={"history_id": rollback_target["history_id"], "reason": "回滚测试"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["rule_value"] == old_val
+
+
+def test_rollback_nonexistent_history_returns_404(app_client):
+    """回滚到不存在的历史记录返回 404。"""
+    client, server = app_client
+    resp = client.post(
+        "/api/v1/admin/rules/escort.cancel.realtime.timeout_seconds/rollback",
+        headers=_admin_headers(server),
+        json={"history_id": 99999, "reason": "测试"},
+    )
+    assert resp.status_code == 404
