@@ -77,6 +77,10 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
             await asyncio.wait_for(scheduler_task, timeout=5.0)
         except asyncio.TimeoutError:
             scheduler_task.cancel()
+            try:
+                await scheduler_task
+            except asyncio.CancelledError:
+                pass
         if ws_bridge_ref["bridge"]:
             server.event_bus.unsubscribe_all(ws_bridge_ref["bridge"])
         await ws_manager.disconnect_all()
