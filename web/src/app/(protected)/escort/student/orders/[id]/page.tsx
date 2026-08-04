@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
 import { useDeal, usePayment } from "@/hooks/use-scheduled";
+import { useSendFriendRequest } from "@/hooks/use-friends";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
 import { apiClient } from "@/lib/api-client";
@@ -45,6 +46,8 @@ export default function StudentOrderDetailPage() {
   const currentStatus = orderStatusUpdates[taskId] || order?.status;
   const hasReviewed = reviews?.some((r) => r.reviewer_id === user?.user_id);
   const isScheduled = order?.order_type === "SCHEDULED";
+
+  const sendFriendRequest = useSendFriendRequest();
 
   const cancelRules = useCancelRules();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -153,6 +156,23 @@ export default function StudentOrderDetailPage() {
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
             <p className="text-green-800">已评价</p>
           </div>
+        )}
+
+        {/* 加好友按钮（订单完成后向教练发送好友请求） */}
+        {currentStatus === "completed" && order.assigned_resource_id && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() =>
+              sendFriendRequest.mutate({
+                toUserId: order.assigned_resource_id as string,
+                message: "服务很好，加个好友",
+              })
+            }
+            disabled={sendFriendRequest.isPending}
+          >
+            {sendFriendRequest.isPending ? "发送中..." : "加好友"}
+          </Button>
         )}
 
         {/* 取消按钮（非终态均可显示） */}

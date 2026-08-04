@@ -48,6 +48,14 @@ vi.mock("@/hooks/use-ws-events", () => ({
   useWsEvent: () => {},
 }));
 
+vi.mock("@/hooks/use-friends", () => ({
+  useSendFriendRequest: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 vi.mock("@/lib/order-realtime-store", () => ({
   useOrderRealtimeStore: () => ({ orderStatusUpdates: {} }),
 }));

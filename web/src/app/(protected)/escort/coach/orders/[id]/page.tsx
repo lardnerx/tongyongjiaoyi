@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
 import { useDeal, useConfirmDeal, useRejectDeal } from "@/hooks/use-scheduled";
+import { useSendFriendRequest } from "@/hooks/use-friends";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
@@ -28,6 +29,7 @@ export default function CoachOrderDetailPage() {
   const { data: deal } = useDeal(dealId);
   const confirmDeal = useConfirmDeal();
   const rejectDeal = useRejectDeal();
+  const sendFriendRequest = useSendFriendRequest();
 
   useWsEvent("task.completed", () => invalidate());
   useWsEvent("task.cancelled", () => invalidate());
@@ -228,6 +230,23 @@ export default function CoachOrderDetailPage() {
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
             <p className="text-green-800">已评价</p>
           </div>
+        )}
+
+        {/* 加好友按钮（订单完成后向学员发送好友请求） */}
+        {order.status === "completed" && order.demander_id && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() =>
+              sendFriendRequest.mutate({
+                toUserId: order.demander_id,
+                message: "服务很好，加个好友",
+              })
+            }
+            disabled={sendFriendRequest.isPending}
+          >
+            {sendFriendRequest.isPending ? "发送中..." : "加好友"}
+          </Button>
         )}
       </div>
     </div>
