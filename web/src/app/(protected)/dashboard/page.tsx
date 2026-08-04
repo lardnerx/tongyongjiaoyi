@@ -96,6 +96,9 @@ export default function DashboardPage() {
               管理后台 · 规则配置
             </Button>
           )}
+          <Button variant="outline" onClick={() => router.push("/friends")}>
+            我的好友
+          </Button>
         </div>
 
         <Button onClick={handleLogout} variant="ghost">
