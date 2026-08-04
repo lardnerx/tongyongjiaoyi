@@ -121,3 +121,148 @@ async def list_received_requests(
     # 按创建时间倒序
     requests.sort(key=lambda r: r["created_at"], reverse=True)
     return ok(requests)
+
+
+@router.post("/requests/{request_id}/accept", response_model=Envelope)
+async def accept_friend_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    server: UMCPServer = Depends(get_server),
+) -> Envelope:
+    """接受好友请求。"""
+    with _store_lock:
+        request = _friend_requests_store.get(request_id)
+        if request is None:
+            raise NotFoundError(message=f"好友请求 {request_id} 不存在")
+        if request["to_user_id"] != current_user.user_id:
+            raise PermissionDeniedError(message="只有接收方才能接受请求")
+        if request["status"] != "pending":
+            raise IllegalStateError(message=f"请求状态为 {request['status']}，无法接受")
+
+        # 更新请求状态
+        now = datetime.utcnow().isoformat()
+        request["status"] = "accepted"
+        request["responded_at"] = now
+
+        # 创建双向好友关系
+        from_id = request["from_user_id"]
+        to_id = request["to_user_id"]
+        friendship_id_1 = f"fship_{uuid.uuid4().hex[:12]}"
+        friendship_id_2 = f"fship_{uuid.uuid4().hex[:12]}"
+        _friendships_store[friendship_id_1] = {
+            "friendship_id": friendship_id_1,
+            "user_id": from_id,
+            "friend_user_id": to_id,
+            "created_at": now,
+        }
+        _friendships_store[friendship_id_2] = {
+            "friendship_id": friendship_id_2,
+            "user_id": to_id,
+            "friend_user_id": from_id,
+            "created_at": now,
+        }
+
+    # 发布事件（通知发起方）
+    server.event_bus.publish(
+        Event(
+            type=EventType.FRIEND_REQUEST_ACCEPTED,
+            source_layer="ESCORT",
+            payload={
+                "request_id": request_id,
+                "to_user_id": to_id,
+                "user_id": from_id,  # 发起方（用于 WS 推送路由）
+            },
+        )
+    )
+
+    return ok(request)
+
+
+@router.post("/requests/{request_id}/reject", response_model=Envelope)
+async def reject_friend_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    server: UMCPServer = Depends(get_server),
+) -> Envelope:
+    """拒绝好友请求。"""
+    with _store_lock:
+        request = _friend_requests_store.get(request_id)
+        if request is None:
+            raise NotFoundError(message=f"好友请求 {request_id} 不存在")
+        if request["to_user_id"] != current_user.user_id:
+            raise PermissionDeniedError(message="只有接收方才能拒绝请求")
+        if request["status"] != "pending":
+            raise IllegalStateError(message=f"请求状态为 {request['status']}，无法拒绝")
+
+        request["status"] = "rejected"
+        request["responded_at"] = datetime.utcnow().isoformat()
+
+    # 发布事件（通知发起方）
+    server.event_bus.publish(
+        Event(
+            type=EventType.FRIEND_REQUEST_REJECTED,
+            source_layer="ESCORT",
+            payload={
+                "request_id": request_id,
+                "to_user_id": request["to_user_id"],
+                "user_id": request["from_user_id"],  # 发起方（用于 WS 推送路由）
+            },
+        )
+    )
+
+    return ok(request)
+
+
+@router.get("", response_model=Envelope)
+async def list_friends(
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """查看好友列表。"""
+    with _store_lock:
+        friends = [
+            {
+                "friendship_id": f["friendship_id"],
+                "friend_user_id": f["friend_user_id"],
+                "created_at": f["created_at"],
+            }
+            for f in _friendships_store.values()
+            if f["user_id"] == current_user.user_id
+        ]
+    friends.sort(key=lambda f: f["created_at"], reverse=True)
+    return ok(friends)
+
+
+@router.delete("/{friend_user_id}", response_model=Envelope)
+async def remove_friend(
+    friend_user_id: str,
+    current_user: User = Depends(get_current_user),
+    server: UMCPServer = Depends(get_server),
+) -> Envelope:
+    """删除好友（双向删除）。"""
+    with _store_lock:
+        # 找到双向好友关系记录
+        to_remove = [
+            fid
+            for fid, f in _friendships_store.items()
+            if (f["user_id"] == current_user.user_id and f["friend_user_id"] == friend_user_id)
+            or (f["user_id"] == friend_user_id and f["friend_user_id"] == current_user.user_id)
+        ]
+        if not to_remove:
+            raise NotFoundError(message=f"与 {friend_user_id} 不是好友")
+
+        for fid in to_remove:
+            del _friendships_store[fid]
+
+    # 发布事件（通知被删除方）
+    server.event_bus.publish(
+        Event(
+            type=EventType.FRIEND_REMOVED,
+            source_layer="ESCORT",
+            payload={
+                "removed_by": current_user.user_id,
+                "user_id": friend_user_id,  # 被删除方（用于 WS 推送路由）
+            },
+        )
+    )
+
+    return ok(message="已删除好友")
