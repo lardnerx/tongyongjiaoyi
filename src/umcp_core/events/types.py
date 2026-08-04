@@ -62,6 +62,8 @@ class EventType(str, Enum):
     # 好友（陪驾 MVP 扩展）
     FRIEND_REQUEST_CREATED = "friend_request.created"
     FRIEND_REQUEST_ACCEPTED = "friend_request.accepted"
+    FRIEND_REQUEST_REJECTED = "friend_request.rejected"
+    FRIEND_REMOVED = "friend.removed"
 
     # 签到签退（陪驾 MVP 扩展）
     CHECK_IN = "check_in"

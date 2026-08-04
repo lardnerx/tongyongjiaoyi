@@ -44,6 +44,10 @@ WS_PUSHABLE_EVENTS: set[EventType] = {
     EventType.REVIEW_SUBMITTED,
     EventType.CHECK_IN,
     EventType.CHECK_OUT,
+    EventType.FRIEND_REQUEST_CREATED,
+    EventType.FRIEND_REQUEST_ACCEPTED,
+    EventType.FRIEND_REQUEST_REJECTED,
+    EventType.FRIEND_REMOVED,
 }
 
 

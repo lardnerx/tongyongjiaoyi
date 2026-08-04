@@ -5,6 +5,7 @@ from umcp_core.transport.routers.auth import router as auth_router
 from umcp_core.transport.routers.deals import router as deals_router
 from umcp_core.transport.routers.escort import coaches_router, escort_deals_router, orders_router, escort_payments_router, reviews_router
 from umcp_core.transport.routers.events import router as events_router
+from umcp_core.transport.routers.friends import router as friends_router
 from umcp_core.transport.routers.health import router as health_router
 from umcp_core.transport.routers.matches import router as matches_router
 from umcp_core.transport.routers.resources import router as resources_router
@@ -30,3 +31,5 @@ def register_routers(app) -> None:
     app.include_router(escort_deals_router)
     # 管理员规则配置 router（prefix 已内置于 router）
     app.include_router(admin_rules_router)
+    # 好友社交 router（prefix 已内置于 router）
+    app.include_router(friends_router)
