@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -64,10 +65,12 @@ class PhoneAuthProvider(AuthProvider):
                    authenticate 也会优先查询仓储。
     """
 
-    def __init__(self, user_repo: Any = None) -> None:
+    def __init__(self, user_repo: Any = None, cache_ttl: int = 60) -> None:
         self._users: dict[str, User] = {}
         self._tokens: dict[str, str] = {}
         self._user_repo = user_repo
+        self._cache_ttl = cache_ttl  # 缓存有效期（秒），到期后自动从仓储刷新
+        self._cache_timestamps: dict[str, float] = {}  # 各用户缓存写入时间戳
 
     def _build_user(self, phone: str, name: str = "", password: str = "") -> User:
         """创建带有 Demander + Supplier 角色的用户。"""
@@ -102,26 +105,47 @@ class PhoneAuthProvider(AuthProvider):
         user.add_role(_DefaultSupplier())
         return user
 
+    def _is_cache_valid(self, phone: str) -> bool:
+        """检查缓存是否仍在有效期内。"""
+        if phone not in self._cache_timestamps:
+            return False
+        elapsed = time.time() - self._cache_timestamps[phone]
+        return elapsed < self._cache_ttl
+
+    def _update_cache(self, phone: str, user: User) -> None:
+        """写入缓存并记录时间戳。"""
+        self._users[phone] = user
+        self._cache_timestamps[phone] = time.time()
+
     def authenticate(self, credential: Credential) -> User:
         if credential.type != "phone":
             raise ValueError(f"PhoneAuthProvider 不支持凭据类型: {credential.type}")
         phone = credential.token
         password = credential.payload.get("password", "")
-        # 优先从 UserRepository 查找（确保获得最新数据，包括 avatar_url 等）
+
+        # 1. 缓存命中且未过期 → 直接返回（避免重复查仓储）
+        if phone in self._users and self._is_cache_valid(phone):
+            user = self._users[phone]
+            self._verify_user_password(user, password)
+            return user
+
+        # 2. 缓存过期或未命中 → 从仓储获取最新数据
         if self._user_repo:
             found = self._user_repo.find_by_phone(phone)
             if found is not None:
                 self._verify_user_password(found, password)
-                self._users[phone] = found  # 同步到缓存
+                self._update_cache(phone, found)
                 return found
-        # 其次从缓存取（当 repo 不可用时）
+
+        # 3. 仓储不可用 → 回退到缓存（即使过期也比完全查不到好）
         if phone in self._users:
             user = self._users[phone]
             self._verify_user_password(user, password)
             return user
-        # 兜底：自动注册新用户（兼容旧逻辑）
+
+        # 4. 兜底：自动注册新用户（兼容旧逻辑）
         user = self._build_user(phone)
-        self._users[phone] = user
+        self._update_cache(phone, user)
         if self._user_repo:
             self._user_repo.save(user)
         return user
@@ -166,7 +190,7 @@ class PhoneAuthProvider(AuthProvider):
         if self._user_repo and self._user_repo.find_by_phone(phone) is not None:
             raise ValueError(f"手机号 {phone} 已注册")
         user = self._build_user(phone, name=name, password=password)
-        self._users[phone] = user
+        self._update_cache(phone, user)
         if self._user_repo:
             self._user_repo.save(user)
         return user
@@ -199,7 +223,7 @@ class PhoneAuthProvider(AuthProvider):
         if self._user_repo:
             self._user_repo.save(user)
         # 更新缓存
-        self._users[phone] = user
+        self._update_cache(phone, user)
         return user
 
     def change_password(self, user_id: str, old_password: str, new_password: str) -> User:
@@ -242,5 +266,5 @@ class PhoneAuthProvider(AuthProvider):
         # 更新缓存
         phone = user.metadata.get("phone", "")
         if phone:
-            self._users[phone] = user
+            self._update_cache(phone, user)
         return user
