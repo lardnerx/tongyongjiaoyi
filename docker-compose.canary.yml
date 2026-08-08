@@ -1,0 +1,75 @@
+# =============================================================================
+# 灰度测试 — PhoneAuthProvider TTL 缓存策略
+# =============================================================================
+# 使用方法：
+#   1. 生产环境（旧逻辑，无 TTL 缓存）：
+#      docker compose -f docker-compose.yml -f docker-compose.canary.yml up -d app
+#
+#   2. 灰度组 A（TTL=30s，适用于高频登录场景）：
+#      docker compose -f docker-compose.yml -f docker-compose.canary.yml up -d app-canary-a
+#
+#   3. 灰度组 B（TTL=120s，适用于低频登录场景）：
+#      docker compose -f docker-compose.yml -f docker-compose.canary.yml up -d app-canary-b
+#
+# 注意：此文件依赖 docker-compose.yml 中的 postgres 和网络配置。
+# =============================================================================
+
+services:
+  # ---- 生产组（无 TTL 缓存，保持旧逻辑） ----
+  app:
+    extends:
+      file: docker-compose.yml
+      service: app
+    container_name: umcp_app_prod
+    environment:
+      UMCP_AUTH_CACHE_TTL: 0
+    ports:
+      - "8000:8000"
+
+  # ---- 灰度组 A（TTL=30s，激进缓存，适合高频登录场景） ----
+  app-canary-a:
+    build: .
+    container_name: umcp_app_canary_a
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      UMCP_JWT_SECRET: ${UMCP_JWT_SECRET:-dev-secret-change-me-32bytes}
+      UMCP_DB_DSN: postgresql+psycopg://umcp:umcp@postgres:5432/umcp_dev
+      UMCP_HOST: 0.0.0.0
+      UMCP_PORT: 8001
+      UMCP_LOG_LEVEL: INFO
+      UMCP_AUTH_CACHE_TTL: 30
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---- 灰度组 B（TTL=120s，保守缓存，适合低频登录场景） ----
+  app-canary-b:
+    build: .
+    container_name: umcp_app_canary_b
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      UMCP_JWT_SECRET: ${UMCP_JWT_SECRET:-dev-secret-change-me-32bytes}
+      UMCP_DB_DSN: postgresql+psycopg://umcp:umcp@postgres:5432/umcp_dev
+      UMCP_HOST: 0.0.0.0
+      UMCP_PORT: 8002
+      UMCP_LOG_LEVEL: INFO
+      UMCP_AUTH_CACHE_TTL: 120
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped

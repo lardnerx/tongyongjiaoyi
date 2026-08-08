@@ -10,10 +10,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from umcp_core.core.base import User
 from umcp_core.core.domain import Credential
+from umcp_core.layers.l1 import PhoneAuthProvider
 from umcp_core.server import UMCPServer
 from umcp_core.transport.auth import JwtService
 from umcp_core.transport.config import TransportConfig
@@ -54,6 +56,10 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     )
     ws_manager = ConnectionManager()
     ws_bridge_ref: dict = {"bridge": None, "loop": None}
+
+    # 应用认证缓存 TTL 配置（灰度测试用，通过环境变量 UMCP_AUTH_CACHE_TTL 控制）
+    if isinstance(server.auth_provider, PhoneAuthProvider):
+        server.auth_provider._cache_ttl = config.auth_cache_ttl
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -118,6 +124,11 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
 
     # 路由
     register_routers(app)
+
+    # 静态文件服务：挂载上传目录（头像等）
+    uploads_dir = Path(__file__).resolve().parent.parent.parent.parent / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/api/v1/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
     # Prometheus /metrics 端点（不走 /api/v1 前缀，便于 scrape 配置）
     @app.get("/metrics")

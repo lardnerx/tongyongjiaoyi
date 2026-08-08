@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any
@@ -71,6 +72,10 @@ class PhoneAuthProvider(AuthProvider):
         self._user_repo = user_repo
         self._cache_ttl = cache_ttl  # 缓存有效期（秒），到期后自动从仓储刷新
         self._cache_timestamps: dict[str, float] = {}  # 各用户缓存写入时间戳
+        # 并发控制
+        self._cache_lock = threading.Lock()  # 保护 _users / _cache_timestamps 的并发读写
+        self._refresh_locks: dict[str, threading.Lock] = {}  # 每个 key 的刷新互斥锁，防止缓存击穿
+        self._refresh_locks_lock = threading.Lock()  # 保护 _refresh_locks 的并发访问
 
     def _build_user(self, phone: str, name: str = "", password: str = "") -> User:
         """创建带有 Demander + Supplier 角色的用户。"""
@@ -105,17 +110,34 @@ class PhoneAuthProvider(AuthProvider):
         user.add_role(_DefaultSupplier())
         return user
 
+    def _get_refresh_lock(self, key: str) -> threading.Lock:
+        """获取指定 key 的刷新互斥锁。
+
+        同一时刻只有一个线程可以刷新该 key 的缓存，防止缓存击穿（thundering herd）。
+        锁对象在 _refresh_locks 中按需创建，不会无限增长（活跃用户数有限）。
+        """
+        with self._refresh_locks_lock:
+            if key not in self._refresh_locks:
+                self._refresh_locks[key] = threading.Lock()
+            return self._refresh_locks[key]
+
     def _is_cache_valid(self, phone: str) -> bool:
-        """检查缓存是否仍在有效期内。"""
+        """检查缓存是否仍在有效期内（线程安全，需在 _cache_lock 保护下调用）。"""
         if phone not in self._cache_timestamps:
             return False
         elapsed = time.time() - self._cache_timestamps[phone]
         return elapsed < self._cache_ttl
 
     def _update_cache(self, phone: str, user: User) -> None:
-        """写入缓存并记录时间戳。"""
-        self._users[phone] = user
-        self._cache_timestamps[phone] = time.time()
+        """写入缓存并记录时间戳（线程安全）。"""
+        with self._cache_lock:
+            self._users[phone] = user
+            self._cache_timestamps[phone] = time.time()
+
+    def _read_cache(self, phone: str) -> User | None:
+        """从缓存读取用户（线程安全）。"""
+        with self._cache_lock:
+            return self._users.get(phone)
 
     def authenticate(self, credential: Credential) -> User:
         if credential.type != "phone":
@@ -123,32 +145,42 @@ class PhoneAuthProvider(AuthProvider):
         phone = credential.token
         password = credential.payload.get("password", "")
 
-        # 1. 缓存命中且未过期 → 直接返回（避免重复查仓储）
-        if phone in self._users and self._is_cache_valid(phone):
-            user = self._users[phone]
-            self._verify_user_password(user, password)
+        # 1. 快速路径：缓存命中且未过期 → 直接返回（避免重复查仓储）
+        cached = self._read_cache(phone)
+        if cached is not None and self._is_cache_valid(phone):
+            self._verify_user_password(cached, password)
+            return cached
+
+        # 2. 双重检查锁：获取 per-key 刷新锁，防止缓存击穿
+        #    同一时刻只有第一个线程进入仓储查询，其他线程等待锁释放后直接读缓存
+        refresh_lock = self._get_refresh_lock(phone)
+        with refresh_lock:
+            # 2a. 再次检查缓存（可能在等待锁期间已被其他线程刷新）
+            cached = self._read_cache(phone)
+            if cached is not None and self._is_cache_valid(phone):
+                self._verify_user_password(cached, password)
+                return cached
+
+            # 2b. 缓存过期或未命中 → 从仓储获取最新数据
+            if self._user_repo:
+                found = self._user_repo.find_by_phone(phone)
+                if found is not None:
+                    self._verify_user_password(found, password)
+                    self._update_cache(phone, found)
+                    return found
+
+            # 2c. 仓储不可用 → 回退到缓存（即使过期也比完全查不到好）
+            cached = self._read_cache(phone)
+            if cached is not None:
+                self._verify_user_password(cached, password)
+                return cached
+
+            # 2d. 兜底：自动注册新用户（兼容旧逻辑）
+            user = self._build_user(phone)
+            self._update_cache(phone, user)
+            if self._user_repo:
+                self._user_repo.save(user)
             return user
-
-        # 2. 缓存过期或未命中 → 从仓储获取最新数据
-        if self._user_repo:
-            found = self._user_repo.find_by_phone(phone)
-            if found is not None:
-                self._verify_user_password(found, password)
-                self._update_cache(phone, found)
-                return found
-
-        # 3. 仓储不可用 → 回退到缓存（即使过期也比完全查不到好）
-        if phone in self._users:
-            user = self._users[phone]
-            self._verify_user_password(user, password)
-            return user
-
-        # 4. 兜底：自动注册新用户（兼容旧逻辑）
-        user = self._build_user(phone)
-        self._update_cache(phone, user)
-        if self._user_repo:
-            self._user_repo.save(user)
-        return user
 
     def _verify_user_password(self, user: User, password: str) -> None:
         """验证用户密码，如果用户设置了密码但未提供或错误则抛出异常。"""

@@ -32,6 +32,8 @@ class TransportConfig:
     db_max_overflow: int = 20
     db_pool_recycle: int = 3600
     db_pool_timeout: int = 30
+    # 认证缓存策略（灰度测试用）
+    auth_cache_ttl: int = 60
 
     @classmethod
     def from_env(cls) -> "TransportConfig":
@@ -56,4 +58,5 @@ class TransportConfig:
             db_max_overflow=_env_int("UMCP_DB_MAX_OVERFLOW", 20),
             db_pool_recycle=_env_int("UMCP_DB_POOL_RECYCLE", 3600),
             db_pool_timeout=_env_int("UMCP_DB_POOL_TIMEOUT", 30),
+            auth_cache_ttl=_env_int("UMCP_AUTH_CACHE_TTL", 60),
         )
