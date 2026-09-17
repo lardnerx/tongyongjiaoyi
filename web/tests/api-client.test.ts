@@ -61,12 +61,35 @@ describe("api-client", () => {
     );
   });
 
-  it("throws ApiError on non-zero code", async () => {
+  it("auto-refreshes on 1001 invalid credential", async () => {
+    useAuthStore.getState().setTokens("invalid_access", "valid_refresh");
+    // 第一次请求返回 1001（签名无效，如服务器重启）
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ code: 1001, message: "无效凭据", details: null }),
     });
-    await expect(apiClient.get("/auth/me")).rejects.toThrow("无效凭据");
+    // 刷新请求返回新 token
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: {
+          access_token: "new_access",
+          refresh_token: "new_refresh",
+          token_type: "Bearer",
+          expires_in: 3600,
+        },
+        message: "ok",
+      }),
+    });
+    // 重试请求返回成功
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ code: 0, data: { user_id: "u1" }, message: "ok" }),
+    });
+    const result = await apiClient.get("/auth/me");
+    expect(result).toEqual({ user_id: "u1" });
+    expect(useAuthStore.getState().accessToken).toBe("new_access");
   });
 
   it("auto-refreshes on 1002 expired token", async () => {

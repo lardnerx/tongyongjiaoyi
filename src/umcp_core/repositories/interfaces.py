@@ -117,6 +117,16 @@ class UserRepository(ABC):
     def find_by_name(self, name: str) -> User | None:
         ...
 
+    @abstractmethod
+    def find_by_phone(self, phone: str) -> User | None:
+        """按手机号查找用户（手机号存储在 metadata 中）。"""
+        ...
+
+    @abstractmethod
+    def update_password(self, user_id: str, password_hash: str) -> None:
+        """更新用户密码哈希。"""
+        ...
+
 
 class TrustRepository(ABC):
     """信任数据仓储接口。"""

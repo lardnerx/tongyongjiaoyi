@@ -14,7 +14,6 @@ import { CountdownTimer } from "@/components/countdown-timer";
 import { CancelDialog } from "@/components/cancel-dialog";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
-import { MockPayment } from "@/components/mock-payment";
 import { Button } from "@/components/ui/button";
 import type { OrderStatus } from "@/types/escort";
 
@@ -116,13 +115,21 @@ export default function StudentOrderDetailPage() {
 
         {/* 预约单：已选教练，待支付定金 */}
         {isScheduled && dealId && deal?.status === "pending" && payment?.status !== "paid" && (
-          <MockPayment dealId={dealId} onPaid={invalidate} />
+          <Button
+            className="w-full"
+            onClick={() => router.push(`/escort/student/orders/${taskId}/pay`)}
+          >
+            去支付 ¥{deal?.final_amount ? (deal.final_amount * 0.3).toFixed(2) : "0.00"}
+          </Button>
         )}
 
         {/* 预约单：已支付，等待教练确认 */}
         {isScheduled && payment?.status === "paid" && deal?.status === "pending" && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center space-y-1">
             <p className="text-yellow-800">定金已支付，等待教练确认...</p>
+            <p className="text-sm text-yellow-600">
+              已付定金：¥{payment?.amount ? payment.amount.toFixed(2) : (deal?.final_amount ? (deal.final_amount * 0.3).toFixed(2) : "0.00")}
+            </p>
           </div>
         )}
 

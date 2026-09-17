@@ -122,11 +122,12 @@ class PhoneAuthProvider(AuthProvider):
             return self._refresh_locks[key]
 
     def _is_cache_valid(self, phone: str) -> bool:
-        """检查缓存是否仍在有效期内（线程安全，需在 _cache_lock 保护下调用）。"""
-        if phone not in self._cache_timestamps:
-            return False
-        elapsed = time.time() - self._cache_timestamps[phone]
-        return elapsed < self._cache_ttl
+        """检查缓存是否仍在有效期内（线程安全，自包含锁保护）。"""
+        with self._cache_lock:
+            if phone not in self._cache_timestamps:
+                return False
+            elapsed = time.time() - self._cache_timestamps[phone]
+            return elapsed < self._cache_ttl
 
     def _update_cache(self, phone: str, user: User) -> None:
         """写入缓存并记录时间戳（线程安全）。"""

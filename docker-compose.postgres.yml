@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: umcp_postgres
+    environment:
+      POSTGRES_USER: umcp
+      POSTGRES_PASSWORD: umcp
+      POSTGRES_DB: umcp_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - umcp_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  umcp_pg_data:

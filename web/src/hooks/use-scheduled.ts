@@ -68,6 +68,22 @@ export function useMockPay() {
   });
 }
 
+/** 创建支付订单（微信支付/Mock 自动路由）。 */
+export function useCreatePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { dealId: string; paymentType?: string }) =>
+      apiClient.post<PaymentInfo>("/escort/payments/create", {
+        deal_id: params.dealId,
+        payment_type: params.paymentType || "deposit",
+      }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["payment", data.deal_id] });
+      qc.invalidateQueries({ queryKey: ["deal", data.deal_id] });
+    },
+  });
+}
+
 /** 教练确认预约单。 */
 export function useConfirmDeal() {
   const qc = useQueryClient();

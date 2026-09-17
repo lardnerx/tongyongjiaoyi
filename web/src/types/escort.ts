@@ -80,6 +80,7 @@ export interface PaymentInfo {
   payment_type: string;
   status: string;
   trade_no: string | null;
+  code_url: string | null;  // 微信支付 Native 二维码 URL
 }
 
 /** 教练确认/拒绝响应。 */

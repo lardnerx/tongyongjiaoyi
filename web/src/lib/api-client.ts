@@ -58,10 +58,11 @@ async function request<T>(
 
   const envelope: Envelope<T> | ErrorEnvelope = await resp.json();
 
-  // 检查是否 token 过期（code=1002）
-  if ("code" in envelope && envelope.code === 1002) {
+  // 检查是否 token 过期（code=1002）或签名无效（code=1001，如服务器重启后密钥变更）
+  // 两者都尝试用 refresh_token 自动恢复，避免用户手动重新登录
+  if ("code" in envelope && (envelope.code === 1002 || envelope.code === 1001)) {
     if (retried) {
-      throw new ApiError(1002, "刷新后令牌仍被拒绝");
+      throw new ApiError(envelope.code, "刷新后令牌仍被拒绝");
     }
     if (!isRefreshing) {
       isRefreshing = true;
@@ -84,6 +85,33 @@ async function request<T>(
   return (envelope as Envelope<T>).data as T;
 }
 
+/** 文件上传（multipart/form-data），不走 JSON 序列化。 */
+async function uploadFile<T>(
+  path: string,
+  formData: FormData,
+  onProgress?: (pct: number) => void,
+): Promise<T> {
+  const { accessToken } = useAuthStore.getState();
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+  // 不设置 Content-Type，让浏览器自动设置 multipart boundary
+
+  const resp = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const envelope: Envelope<T> | ErrorEnvelope = await resp.json();
+  if (envelope.code !== 0) {
+    const err = envelope as ErrorEnvelope;
+    throw new ApiError(err.code, err.message, err.details);
+  }
+  return (envelope as Envelope<T>).data as T;
+}
+
 export const apiClient = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body: unknown) =>
@@ -97,4 +125,5 @@ export const apiClient = {
       body: body !== null ? JSON.stringify(body) : undefined,
     }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  upload: <T>(path: string, formData: FormData) => uploadFile<T>(path, formData),
 };

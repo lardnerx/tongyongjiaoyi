@@ -20,7 +20,7 @@ class DealStateMachine(StateMachine):
         DealStatus.IN_SERVICE: {DealStatus.COMPLETED, DealStatus.DISPUTED, DealStatus.CANCELLED},
         DealStatus.DISPUTED: {DealStatus.RESOLVED},
         DealStatus.RESOLVED: {DealStatus.COMPLETED, DealStatus.CANCELLED},
-        DealStatus.COMPLETED: set(),
+        DealStatus.COMPLETED: {DealStatus.DISPUTED},
         DealStatus.CANCELLED: set(),
     }
 

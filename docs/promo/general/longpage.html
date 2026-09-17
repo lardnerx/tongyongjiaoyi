@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>《即时百分百》在线服务平台 · 综合推介</title>
+<style>
+  :root { --blue:#1677ff; --orange:#ff7a1a; --dark:#1f2430; --gray:#6b7280; --light:#f4f8ff; }
+  .flow { display:flex; flex-wrap:wrap; align-items:stretch; gap:10px; margin:16px 0; }
+  .flow .node { flex:1; min-width:130px; background:var(--light); border:1px solid #e5e9f2; border-top:4px solid var(--blue); border-radius:12px; padding:16px 14px; text-align:center; }
+  .flow .node .ic { font-size:30px; display:block; margin-bottom:6px; }
+  .flow .node b { color:var(--blue); font-size:16px; display:block; }
+  .flow .node span { font-size:13px; color:#888; }
+  .flow .arr { align-self:center; color:var(--orange); font-size:24px; font-weight:bold; flex-shrink:0; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; color:var(--dark); line-height:1.8; }
+  .wrap { max-width:880px; margin:0 auto; padding:0 20px; }
+  section { padding:56px 0; }
+  .hero { background:linear-gradient(135deg,#1677ff 0%,#0b5ed7 100%); color:#fff; text-align:center; padding:72px 20px; }
+  .hero h1 { font-size:40px; letter-spacing:2px; }
+  .hero .slogan { font-size:20px; margin-top:12px; opacity:.95; }
+  .hero .tag { display:inline-block; margin-top:20px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.4); padding:6px 18px; border-radius:20px; font-size:14px; }
+  .hero img { width:100%; max-width:820px; margin-top:36px; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  h2 { font-size:28px; color:var(--blue); margin-bottom:20px; position:relative; padding-left:16px; }
+  h2::before { content:""; position:absolute; left:0; top:6px; bottom:6px; width:5px; background:var(--orange); border-radius:3px; }
+  h3 { font-size:19px; margin:22px 0 10px; color:var(--dark); }
+  p { margin-bottom:14px; color:#333; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+  .feature { background:var(--light); border-radius:14px; padding:22px; border-left:4px solid var(--blue); }
+  .feature b { color:var(--blue); }
+  .code { background:#0d1117; color:#7ee787; padding:18px 20px; border-radius:10px; font-family:Consolas,monospace; font-size:15px; margin:14px 0; overflow-x:auto; text-align:center; }
+  table { width:100%; border-collapse:collapse; margin:14px 0; }
+  th { background:var(--blue); color:#fff; padding:10px 12px; text-align:left; font-size:14px; }
+  td { border:1px solid #e5e9f2; padding:10px 12px; font-size:14px; }
+  tr:nth-child(even) td { background:#fafbff; }
+  .cta { background:linear-gradient(135deg,#ff7a1a 0%,#ff9a3d 100%); color:#fff; text-align:center; padding:56px 20px; }
+  .cta h2 { color:#fff; padding-left:0; }
+  .cta h2::before { display:none; }
+  .cta p { color:rgba(255,255,255,.92); }
+  .btn { display:inline-block; margin-top:18px; background:#fff; color:var(--orange); font-weight:bold; padding:12px 36px; border-radius:30px; text-decoration:none; }
+  .foot { background:var(--dark); color:#aab; text-align:center; padding:26px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="tag">综合推介</div>
+    <h1>《即时百分百》在线服务平台</h1>
+    <div class="slogan">一个平台，承载所有服务</div>
+    <img src="cover_cn.jpg" alt="平台主视觉">
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>一、发展理念：平台经济 × 灵活就业 × 技术加持</h2>
+    <p>平台经济与灵活就业，正成为劳动力市场的未来发展方向。互联网、大数据、AI 等技术的成熟，为这一方向提供了强有力的技术加持——服务者不必再绑定单一雇主，可以按需提供技能；用户随时可以获得即时、可信的服务。</p>
+    <p>《即时百分百》正是基于这一发展理念而生。它不是在现有平台经济模式上修修补补，而是对现有平台经济与灵活就业形式的<strong>替代式完全升级</strong>：</p>
+    <ul>
+      <li><strong>对劳动者</strong>：从"打零工"升级为有信用、有保障、可持续的职业身份；</li>
+      <li><strong>对服务交易</strong>：从"信息撮合"升级为全链路交易保障；</li>
+      <li><strong>对平台</strong>：从"单一行业 App"升级为承载所有服务交易的通用引擎。</li>
+    </ul>
+  </div>
+</section>
+
+<section style="background:var(--light)">
+  <div class="wrap">
+    <h2>二、平台定位</h2>
+    <p>《即时百分百》是一个<strong>通用在线服务交易平台</strong>——底层是自研的通用双边市场交易引擎（UMCP），陪驾只是平台的第一个业务，而不是全部。</p>
+    <p>平台用七层协议栈（用户接入 → 需求抽象 → 智能匹配 → 交易支付 → 信任信用 → 数据智能 → 治理规则）抽象出所有服务交易的通用能力，任何行业业务都可以作为"插件"挂载进来。<strong>一个平台，承载所有服务。</strong></p>
+    <p><strong>一个逻辑，无数行业</strong>：平台的业务逻辑源于对网约车的抽象——<strong>用户提出需求（含位置）→ 平台智能匹配 → 服务者到达位置提供服务 → 服务完成</strong>。</p>
+    <ul>
+      <li>网约车：用户提出 A → B 的出行需求，司机接驾送达；</li>
+      <li>陪驾：用户预约 A 点陪驾，教练到达进行 1 对 1 陪驾；</li>
+      <li>救援：用户车辆在 A 点抛锚，救援人员到达补胎 / 搭电 / 电车补电。</li>
+    </ul>
+    <p>凡符合"需求（含位置）→ 匹配 → 上门服务 → 完成"这一最简逻辑的服务，都可以纳入平台。<strong>行业是无限的，逻辑只有一个。</strong></p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>三、现状：陪驾业务已上线，全流程验证通过</h2>
+    <ul>
+      <li><strong>业务闭环</strong>：注册 → 下单 → 智能派单 → 教练接单 → 签到 → 陪驾 → 签退 → 双向评价，全链路真实可用；</li>
+      <li><strong>生产环境</strong>：PostgreSQL 持久化、Redis 分布式限流、Nginx + HTTPS、Docker 容器化部署；</li>
+      <li><strong>服务能力</strong>：微信支付、短信通知、高德地图定位均已接入生产。</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>四、六大核心卖点</h2>
+
+    <h3>卖点 1：插件化架构——业务即插即用</h3>
+    <ul>
+      <li>核心库不包含任何行业逻辑，行业业务全部以插件注入；</li>
+      <li>陪驾、网约车等行业插件已内置，按业务域自动路由；</li>
+      <li>新增一个行业 = 新增一个插件，交易、支付、信任、治理能力全部复用。</li>
+    </ul>
+
+    <h3>卖点 2：全链路交易保障</h3>
+    <ul>
+      <li>任务与交易<strong>双状态机</strong>强制校验，非法流转立即拦截；</li>
+      <li>从下单、派单、签到、服务、签退到评价，每一步状态清晰、可追溯；</li>
+      <li>支付担保 + 退款流程标准化，资金链路安全。</li>
+    </ul>
+
+    <h3>卖点 3：信任与信用体系</h3>
+    <ul>
+      <li>每个用户一份<strong>跨业务信用档案</strong>，服务评价沉淀为长期信用；</li>
+      <li>多维评分（如教学能力 / 耐心 / 安全记录）+ 技能徽章；</li>
+      <li>持证准入：声明式准入规则（如 <code>持教练证 &amp;&amp; 信任分 ≥ 4.0</code>），从源头把关。</li>
+    </ul>
+
+    <h3>卖点 4：灵活支付——适配任何行业</h3>
+    <ul>
+      <li>6 种支付模式：一口价 / 动态计价 / 预付费 / 里程碑 / 计时 / 定金尾款；</li>
+      <li>已接入微信支付 V3，扫码支付 + 异步回调，安全可靠；</li>
+      <li>分佣规则可配置（陪驾默认 20%），结算透明。</li>
+    </ul>
+
+    <h3>卖点 5：双向报价撮合——价格由市场说了算</h3>
+    <ul>
+      <li>一改平台<strong>单方面定价、一家说了算</strong>的模式，需求者、服务者都可自主提出价格；</li>
+      <li>需求者按预算出价，服务者按价值报价，买卖双方共同议价；</li>
+      <li>平台基于<strong>海量报价大数据</strong>给出撮合报价，实现自动报价、公允定价。</li>
+    </ul>
+
+    <h3>卖点 6：生产级技术底座</h3>
+    <ul>
+      <li><strong>安全</strong>：JWT 认证、Redis 分布式限流、支付回调三重防重放、HTTPS 全链路；</li>
+      <li><strong>稳定</strong>：状态机 + 事件总线解耦，全量事件审计；</li>
+      <li><strong>可扩展</strong>：插件化 + 按域路由 + 跨域信任聚合，支持多行业并行增长。</li>
+    </ul>
+  </div>
+</section>
+
+<section style="background:var(--light)">
+  <div class="wrap">
+    <h2>五、业务蓝图</h2>
+    <div class="flow">
+      <div class="node"><span class="ic">🚗</span><b>陪驾</b><span>已上线</span></div>
+      <div class="arr">→</div>
+      <div class="node"><span class="ic">🚕</span><b>网约车</b><span>架构就绪</span></div>
+      <div class="arr">→</div>
+      <div class="node"><span class="ic">🔧</span><b>家政/维修</b><span>规划中</span></div>
+      <div class="arr">→</div>
+      <div class="node"><span class="ic">🌐</span><b>更多服务</b><span>无限扩展</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="wrap">
+    <h2>六、加入我们</h2>
+    <table style="color:#fff">
+      <tr><th style="background:rgba(255,255,255,.25)">你属于</th><th style="background:rgba(255,255,255,.25)">可以做什么</th></tr>
+      <tr style="color:#fff"><td><b>服务商</b></td><td>持证入驻，智能派单，透明结算，让技能变成稳定收入</td></tr>
+      <tr style="color:#fff"><td><b>用户</b></td><td>注册下单，享受持证、可信、有担保的服务</td></tr>
+      <tr style="color:#fff"><td><b>投资人</b></td><td>携手共建"一个平台承载所有服务"的通用交易引擎</td></tr>
+    </table>
+    <a class="btn" href="#">加入《即时百分百》</a>
+  </div>
+</section>
+
+<div class="foot">《即时百分百》在线服务平台 · 一个平台，承载所有服务</div>
+</body>
+</html>

@@ -1,0 +1,101 @@
+# =============================================================================
+# 生产环境 Docker Compose 配置
+# 使用方式: docker compose -f docker-compose.prod.yml up -d
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: umcp_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-umcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?必须设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-umcp}
+    ports:
+      - "127.0.0.1:5432:5432"   # 仅监听本地，不对外暴露
+    volumes:
+      - umcp_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-umcp}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - umcp_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: umcp_redis
+    ports:
+      - "127.0.0.1:6379:6379"   # 仅监听本地
+    volumes:
+      - umcp_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - umcp_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: umcp_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      UMCP_DB_DSN: postgresql+psycopg://${POSTGRES_USER:-umcp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-umcp}
+      UMCP_RATE_LIMIT_REDIS_URL: redis://redis:6379/0
+      UMCP_HOST: 0.0.0.0
+      UMCP_PORT: 8000
+    ports:
+      - "127.0.0.1:8000:8000"   # 仅监听本地，通过 Nginx 反向代理对外
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - umcp_net
+
+  # 可选：定时备份 PostgreSQL
+  pgbackup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    container_name: umcp_pgbackup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-umcp}
+      POSTGRES_USER: ${POSTGRES_USER:-umcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?必须设置 POSTGRES_PASSWORD}
+      POSTGRES_EXTRA_OPTS: -Z9 --schema=public
+      SCHEDULE: "@daily"
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: 7
+    volumes:
+      - umcp_pg_backups:/backups
+    restart: unless-stopped
+    networks:
+      - umcp_net
+
+networks:
+  umcp_net:
+    driver: bridge
+
+volumes:
+  umcp_pg_data:
+  umcp_redis_data:
+  umcp_pg_backups:

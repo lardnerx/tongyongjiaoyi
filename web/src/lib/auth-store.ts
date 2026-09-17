@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UserInfo } from "@/types/api";
+import { wsClient } from "@/lib/ws-client";
 
 interface AuthState {
   accessToken: string | null;
@@ -27,6 +28,9 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (accessToken, refreshToken) => {
         set({ accessToken, refreshToken, isAuthenticated: true });
         document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure()}`;
+        // 初始化 WebSocket 连接
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1/ws/events";
+        wsClient.init(wsUrl, accessToken);
       },
       setUser: (user) => {
         set({ user, activeRole: user.active_role });
@@ -48,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
         });
         document.cookie = "auth-token=; path=/; max-age=0";
         document.cookie = "active-role=; path=/; max-age=0";
+        wsClient.disconnect();
       },
     }),
     {
@@ -59,6 +64,13 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
         activeRole: state.activeRole,
       }),
+      onRehydrateStorage: () => (state) => {
+        // 页面刷新后，从持久化恢复时初始化 WebSocket
+        if (state?.accessToken) {
+          const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1/ws/events";
+          wsClient.init(wsUrl, state.accessToken);
+        }
+      },
     }
   )
 );

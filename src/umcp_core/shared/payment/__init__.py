@@ -8,6 +8,7 @@ from umcp_core.shared.payment.base import (
     PaymentType,
     RefundResult,
 )
+from umcp_core.shared.payment.wechat import WechatPayGateway
 
 __all__ = [
     "PaymentGateway",
@@ -16,4 +17,5 @@ __all__ = [
     "PaymentStatusEnum",
     "PaymentType",
     "RefundResult",
+    "WechatPayGateway",
 ]

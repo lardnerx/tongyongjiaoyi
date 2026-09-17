@@ -20,7 +20,7 @@ def pytest_configure(config):
 
 # 无 PG 服务时跳过 PG 测试
 PG_TEST_DSN = os.getenv(
-    "TEST_DATABASE_URL", "postgresql://umcp:umcp@localhost:5432/umcp_dev"
+    "TEST_DATABASE_URL", "postgresql+psycopg://umcp:umcp@localhost:5432/umcp_dev"
 )
 
 

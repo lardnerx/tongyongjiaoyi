@@ -1,0 +1,159 @@
+# =============================================================================
+# 自动化日志告警规则配置
+# 格式: [日志级别] 日志名称: 消息模式
+# 支持的告警通道: console, file, webhook, lark
+# =============================================================================
+
+# 全局配置
+global:
+  check_interval_seconds: 60          # 日志轮询间隔
+  alert_cooldown_seconds: 300         # 同一规则告警冷却时间（防重复）
+  timezone: "Asia/Shanghai"
+  default_channels: ["console"]       # 默认告警通道
+
+# 告警通道配置
+channels:
+  console:
+    type: stderr
+    enabled: true
+
+  file:
+    type: file
+    path: "logs/alerts.log"
+    enabled: true
+    max_size_mb: 100
+    backup_count: 7
+
+  # 飞书/钉钉 Webhook（需配置 URL）
+  # webhook:
+  #   type: webhook
+  #   url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  #   enabled: false
+  #   headers:
+  #     Content-Type: "application/json"
+
+# ---------------------------------------------------------------------------
+# 告警规则
+# 每条规则包含:
+#   - name:       规则名称（用于去重和冷却）
+#   - severity:   critical / warning / info
+#   - pattern:    匹配的日志模式（正则表达式）
+#   - level:      匹配的日志级别（ERROR / WARNING / INFO）
+#   - logger:     匹配的日志名称前缀（可选，不填则匹配所有）
+#   - channels:   告警通道（可选，默认使用 global.default_channels）
+#   - message:    告警消息模板（支持 {matched_line} 占位符）
+# ---------------------------------------------------------------------------
+
+rules:
+
+  # ---- 1. 未处理异常 ----
+  - name: unhandled_exception
+    severity: critical
+    level: ERROR
+    logger: "umcp_core.transport.errors"
+    pattern: "未处理异常"
+    channels: ["console", "file"]
+    message: "[CRITICAL] 未处理异常: {matched_line}"
+
+  # ---- 2. 头像文件类型校验失败 ----
+  - name: avatar_invalid_file_type
+    severity: warning
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "头像文件类型校验失败"
+    message: "[WARNING] 用户上传了非图片格式的头像文件: {matched_line}"
+
+  # ---- 3. 头像文件大小超限 ----
+  - name: avatar_oversized_file
+    severity: warning
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "头像文件大小超限"
+    message: "[WARNING] 头像文件超出大小限制: {matched_line}"
+
+  # ---- 4. JWT 令牌吊销异常 ----
+  - name: jwt_token_revoked
+    severity: info
+    level: INFO
+    logger: "umcp_core.transport.auth"
+    pattern: "Revoked token"
+    message: "[INFO] JWT 令牌已吊销: {matched_line}"
+
+  # ---- 5. 用户登录成功后签发令牌 ----
+  - name: token_issued_after_login
+    severity: info
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "用户登录成功"
+    message: "[INFO] 用户登录: {matched_line}"
+
+  # ---- 6. 用户注册成功 ----
+  - name: user_registered
+    severity: info
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "用户注册成功"
+    message: "[INFO] 新用户注册: {matched_line}"
+
+  # ---- 7. refresh token 无效 ----
+  - name: invalid_refresh_token
+    severity: warning
+    level: ERROR
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "refresh token 无效"
+    message: "[WARNING] 无效的 refresh token 请求: {matched_line}"
+
+  # ---- 8. 新令牌签发失败 ----
+  - name: token_issue_decode_failed
+    severity: warning
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "新令牌签发成功（解码 jti 失败）"
+    message: "[WARNING] 新令牌签发但解码 jti 失败: {matched_line}"
+
+  # ---- 9. 用户仓储持久化失败 ----
+  - name: user_repo_unavailable
+    severity: warning
+    level: INFO
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "用户仓储不可用，跳过持久化"
+    message: "[WARNING] 用户仓储不可用，数据未持久化: {matched_line}"
+
+  # ---- 10. 密码错误 ----
+  - name: password_error
+    severity: warning
+    level: ERROR
+    logger: "umcp_core.transport.routers.auth"
+    pattern: "密码错误"
+    message: "[WARNING] 密码验证失败: {matched_line}"
+
+# ---------------------------------------------------------------------------
+# 速率限制告警（基于日志频率）
+# ---------------------------------------------------------------------------
+rate_limits:
+  - name: rapid_login_failures
+    description: "短时间内大量登录失败"
+    pattern: "密码错误"
+    window_seconds: 60
+    threshold: 10
+    severity: critical
+    message: "[CRITICAL] 短时间内检测到 {count} 次登录失败，可能存在暴力破解"
+    channels: ["console", "file"]
+
+  - name: rapid_registrations
+    description: "短时间内大量注册"
+    pattern: "用户注册成功"
+    window_seconds: 300
+    threshold: 50
+    severity: warning
+    message: "[WARNING] 短时间内检测到 {count} 次注册，请注意异常注册行为"
+    channels: ["console", "file"]
+
+  - name: rapid_avatar_uploads
+    description: "短时间内大量头像上传"
+    pattern: "头像文件保存成功"
+    window_seconds: 60
+    threshold: 30
+    severity: warning
+    message: "[WARNING] 短时间内检测到 {count} 次头像上传，可能存在异常行为"
+    channels: ["console", "file"]

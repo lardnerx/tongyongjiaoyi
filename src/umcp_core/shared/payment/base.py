@@ -35,6 +35,7 @@ class PaymentIntent:
     payment_type: PaymentType
     currency: str = "CNY"
     client_secret: str = ""
+    code_url: str = ""  # 微信支付 Native 二维码 URL
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -82,3 +83,7 @@ class PaymentGateway(ABC):
     @abstractmethod
     def handle_callback(self, raw_data: bytes) -> dict:
         """处理第三方回调。"""
+
+    @abstractmethod
+    def close_payment(self, payment_id: str) -> bool:
+        """关闭订单（取消未支付的订单）。"""

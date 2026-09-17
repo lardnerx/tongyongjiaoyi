@@ -31,6 +31,8 @@ from umcp_core.layers.l4 import PaymentSchema
 from umcp_core.layers.l5 import MeanTrustAggregator, TrustAggregator, TrustEngine
 from umcp_core.layers.l6 import IntelligenceModule, NoopIntelligenceModule
 from umcp_core.layers.l7 import RuleEngine
+from umcp_core.shared.lbs import LBSService
+from umcp_core.shared.lbs.in_memory import InMemoryLBSService
 from umcp_core.repositories.in_memory import (
     InMemoryDealRepository,
     InMemoryEventRepository,
@@ -110,6 +112,9 @@ class UMCPServer:
         # 复合任务子任务执行器（按 domain 注册，覆盖默认行为）
         self._subtask_executors: dict[str, Any] = {}
 
+        # LBS 位置服务（默认内存实现，生产环境可替换为 PostGIS 实现）
+        self.lbs_service: LBSService = InMemoryLBSService()
+
         # 已加载插件
         self._plugins: list[PluginDescriptor] = []
         self._started: bool = False
@@ -159,6 +164,9 @@ class UMCPServer:
         self.event_repo = bundle.event_repo
         self.event_bus.subscribe_all(self.event_repo.append)
         self._postgres_bundle = bundle
+        # 将 user_repo 注入到 PhoneAuthProvider
+        if isinstance(self.auth_provider, PhoneAuthProvider):
+            self.auth_provider._user_repo = self.user_repo
         return bundle
 
     def dispose(self) -> None:
@@ -178,6 +186,9 @@ class UMCPServer:
         self.event_repo = bundle.event_repo
         # 同步把 event_bus 的事件落库
         self.event_bus.subscribe_all(self.event_repo.append)
+        # 将 user_repo 注入到 PhoneAuthProvider
+        if isinstance(self.auth_provider, PhoneAuthProvider):
+            self.auth_provider._user_repo = self.user_repo
         return bundle
 
     def set_repositories(
@@ -197,6 +208,9 @@ class UMCPServer:
         self.trust_repo = trust_repo
         self.event_repo = event_repo
         self.event_bus.subscribe_all(self.event_repo.append)
+        # 将 user_repo 注入到 PhoneAuthProvider
+        if isinstance(self.auth_provider, PhoneAuthProvider):
+            self.auth_provider._user_repo = self.user_repo
 
     # ------------------------------------------------------------------
     # 层组件注入

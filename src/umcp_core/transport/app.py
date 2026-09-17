@@ -26,6 +26,7 @@ from umcp_core.transport.routers import register_routers
 from umcp_core.transport.scheduler import SchedulerService
 from umcp_core.transport.ws import ConnectionManager, make_ws_event_bridge
 from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWorker
+from umcp_core.transport.workers.payment_timeout_worker import PaymentTimeoutWorker
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,10 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
         bridge = make_ws_event_bridge(ws_manager, loop)
         ws_bridge_ref["bridge"] = bridge
         server.event_bus.subscribe_all(bridge)
-        # 启动调度器服务（注册 RealtimeCancelWorker）
+        # 启动调度器服务（注册 Worker）
         scheduler = SchedulerService(interval_seconds=1.0)
         scheduler.register(RealtimeCancelWorker())
+        scheduler.register(PaymentTimeoutWorker())
         app.state.scheduler = scheduler
         scheduler_task = asyncio.create_task(scheduler.start(context={"server": server}))
         app.state.scheduler_task = scheduler_task
@@ -105,6 +107,15 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     app.state.jwt_service = jwt_service
     app.state.ws_manager = ws_manager
     server.ws_manager = ws_manager
+    # 如果通知中心已存在，补注册 WS 推送渠道（插件加载时 ws_manager 尚未可用）
+    notification_center = getattr(server, "notification_center", None)
+    if notification_center is not None:
+        try:
+            from umcp_core.shared.notification.ws_channel import WSNotificationChannel
+            notification_center.register_channel("WS_PUSH", WSNotificationChannel(ws_manager))
+            logger.info("[NOTIFY] WS 通知渠道已补注册")
+        except Exception as e:
+            logger.warning("[NOTIFY] WS 通知渠道补注册失败: %s", e)
     app.state.config = config
 
     # CORS
@@ -118,6 +129,20 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
 
     # Prometheus 指标中间件
     app.add_middleware(MetricsMiddleware)
+
+    # 限流中间件（保护支付回调接口在高频请求下不被打垮）
+    if config.rate_limit_enabled:
+        from umcp_core.transport.middleware.rate_limit import RateLimitMiddleware
+
+        app.add_middleware(
+            RateLimitMiddleware,
+            window_seconds=config.rate_limit_window_seconds,
+            max_requests=config.rate_limit_max_requests,
+            redis_url=config.rate_limit_redis_url,
+            # 支付回调本身豁免限流，避免微信回调超时
+            exempt_paths=["/api/v1/escort/payments/callback"],
+        )
+        logger.info("限流中间件已启用: window=%ss max=%s", config.rate_limit_window_seconds, config.rate_limit_max_requests)
 
     # 异常处理器
     register_exception_handlers(app)

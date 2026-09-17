@@ -134,6 +134,7 @@ class InMemoryUserRepository(UserRepository):
     def __init__(self) -> None:
         self._users: dict[str, User] = {}
         self._by_name: dict[str, User] = {}
+        self._by_phone: dict[str, User] = {}
         self._lock = threading.RLock()
 
     def save(self, user: User) -> User:
@@ -141,6 +142,9 @@ class InMemoryUserRepository(UserRepository):
             self._users[user.user_id] = user
             if user.name:
                 self._by_name[user.name] = user
+            phone = user.metadata.get("phone", "")
+            if phone:
+                self._by_phone[phone] = user
             return user
 
     def find_by_id(self, user_id: str) -> User | None:
@@ -150,6 +154,17 @@ class InMemoryUserRepository(UserRepository):
     def find_by_name(self, name: str) -> User | None:
         with self._lock:
             return self._by_name.get(name)
+
+    def find_by_phone(self, phone: str) -> User | None:
+        with self._lock:
+            return self._by_phone.get(phone)
+
+    def update_password(self, user_id: str, password_hash: str) -> None:
+        with self._lock:
+            user = self._users.get(user_id)
+            if user is None:
+                raise KeyError(f"用户不存在: {user_id}")
+            user.metadata["password_hash"] = password_hash
 
 
 class InMemoryTrustRepository(TrustRepository):

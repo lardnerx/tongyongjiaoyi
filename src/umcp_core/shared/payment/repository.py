@@ -72,6 +72,11 @@ class InMemoryPaymentRepository:
     def find_by_deal(self, deal_id: str) -> list[dict[str, Any]]:
         return [dict(v) for v in self._items.values() if v["deal_id"] == deal_id]
 
+    def find_by_status(self, status: PaymentStatusEnum) -> list[dict[str, Any]]:
+        """按支付状态查询记录。"""
+        target = status.value if isinstance(status, PaymentStatusEnum) else str(status)
+        return [dict(v) for v in self._items.values() if v["status"] == target]
+
     def update_status(
         self,
         payment_id: str,
@@ -131,6 +136,13 @@ class PostgresPaymentRepository:
     def find_by_deal(self, deal_id: str) -> list[dict[str, Any]]:
         with self._session_factory() as session:
             rows = session.query(PaymentModel).filter_by(deal_id=deal_id).all()
+            return [self._to_dict(m) for m in rows]
+
+    def find_by_status(self, status: PaymentStatusEnum) -> list[dict[str, Any]]:
+        """按支付状态查询记录。"""
+        target = status.value if isinstance(status, PaymentStatusEnum) else str(status)
+        with self._session_factory() as session:
+            rows = session.query(PaymentModel).filter_by(status=target).all()
             return [self._to_dict(m) for m in rows]
 
     def update_status(

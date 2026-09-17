@@ -49,3 +49,22 @@ class PostgresUserRepository(UserRepository):
             stmt = select(UserModel).where(UserModel.name == name)
             model = session.execute(stmt).scalars().first()
             return user_from_orm(model) if model else None
+
+    def find_by_phone(self, phone: str) -> User | None:
+        with self._session() as session:
+            # 手机号存储在 metadata->>'phone' 中
+            stmt = select(UserModel).where(
+                UserModel.metadata_["phone"].as_string() == phone
+            )
+            model = session.execute(stmt).scalars().first()
+            return user_from_orm(model) if model else None
+
+    def update_password(self, user_id: str, password_hash: str) -> None:
+        with self._session() as session:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            model = session.execute(stmt).scalar_one_or_none()
+            if model is None:
+                raise KeyError(f"用户不存在: {user_id}")
+            metadata = dict(model.metadata_ or {})
+            metadata["password_hash"] = password_hash
+            model.metadata_ = metadata

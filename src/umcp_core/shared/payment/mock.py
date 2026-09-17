@@ -68,3 +68,12 @@ class MockGateway(PaymentGateway):
 
     def handle_callback(self, raw_data: bytes) -> dict:
         return {"status": "paid", "raw": raw_data.decode("utf-8", errors="ignore")}
+
+    def close_payment(self, payment_id: str) -> bool:
+        """Mock 关闭订单：标记为 failed。"""
+        if payment_id not in self._payments:
+            return False
+        # Mock 中直接移除支付记录
+        self._payments.pop(payment_id, None)
+        self._trade_nos.pop(payment_id, None)
+        return True

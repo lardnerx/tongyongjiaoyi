@@ -39,9 +39,41 @@ export default function DashboardPage() {
 
   const canBeCoach = user?.roles?.includes("supplier");
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+  const avatarFullUrl = user?.avatar_url
+    ? `${API_BASE_URL.replace("/api/v1", "")}${user.avatar_url}`
+    : null;
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md space-y-6 text-center">
+        {/* 头像显示 */}
+        <div className="mx-auto h-20 w-20 overflow-hidden rounded-full border-2 border-gray-200 bg-gray-100">
+          {avatarFullUrl ? (
+            <img
+              src={avatarFullUrl}
+              alt="用户头像"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-2xl text-gray-400">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="40"
+                height="40"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </div>
+          )}
+        </div>
         <h1 className="text-3xl font-bold">欢迎，{user?.name || "用户"}</h1>
         <p className="text-gray-600">用户 ID: {user?.user_id}</p>
         <p className="text-gray-600">当前角色: {activeRole || "未设置"}</p>
@@ -104,6 +136,14 @@ export default function DashboardPage() {
         <Button onClick={handleLogout} variant="ghost">
           退出登录
         </Button>
+        <div className="mt-2 flex justify-center gap-4">
+          <Button variant="link" onClick={() => router.push("/profile")} className="text-sm">
+            个人中心
+          </Button>
+          <Button variant="link" onClick={() => router.push("/settings/password")} className="text-sm">
+            修改密码
+          </Button>
+        </div>
       </div>
     </div>
   );
