@@ -17,6 +17,17 @@ interface AuthState {
 
 const secure = () => (process.env.NODE_ENV === "production" ? "; secure" : "");
 
+// WebSocket 地址：默认与当前页面同源（生产 wss://域名，开发 ws://localhost:8000），
+// 避免打包进 ws://localhost:8000 导致浏览器去连访客自己的机器。
+function defaultWsUrl(): string {
+  if (typeof window === "undefined") return "ws://localhost:8000/api/v1/ws/events";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/api/v1/ws/events`;
+}
+
+const resolveWsUrl = () =>
+  process.env.NEXT_PUBLIC_WS_URL || defaultWsUrl();
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -29,8 +40,7 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken, refreshToken, isAuthenticated: true });
         document.cookie = `auth-token=${accessToken}; path=/; max-age=3600; samesite=lax${secure()}`;
         // 初始化 WebSocket 连接
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1/ws/events";
-        wsClient.init(wsUrl, accessToken);
+        wsClient.init(resolveWsUrl(), accessToken);
       },
       setUser: (user) => {
         set({ user, activeRole: user.active_role });
@@ -67,8 +77,7 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         // 页面刷新后，从持久化恢复时初始化 WebSocket
         if (state?.accessToken) {
-          const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1/ws/events";
-          wsClient.init(wsUrl, state.accessToken);
+          wsClient.init(resolveWsUrl(), state.accessToken);
         }
       },
     }

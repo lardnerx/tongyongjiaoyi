@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   const canBeCoach = user?.roles?.includes("supplier");
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
   const avatarFullUrl = user?.avatar_url
     ? `${API_BASE_URL.replace("/api/v1", "")}${user.avatar_url}`
     : null;
