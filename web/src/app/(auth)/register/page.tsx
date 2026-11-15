@@ -31,6 +31,14 @@ export default function RegisterPage() {
       setError("请输入昵称");
       return;
     }
+    if (!password) {
+      setError("请设置登录密码");
+      return;
+    }
+    if (password.length < 6) {
+      setError("密码长度不能少于6位");
+      return;
+    }
     if (!agreed) {
       setError("请先阅读并同意《用户协议》和《隐私政策》");
       return;
@@ -42,7 +50,7 @@ export default function RegisterPage() {
       const tokenResp = await apiClient.post<TokenResponse>("/auth/register", {
         phone,
         name,
-        password: password || undefined,
+        password,
       } as RegisterRequest & { password?: string });
       setTokens(tokenResp.access_token, tokenResp.refresh_token);
 
@@ -92,10 +100,10 @@ export default function RegisterPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">密码（可选）</label>
+              <label className="text-sm font-medium">密码</label>
               <Input
                 type="password"
-                placeholder="设置密码后可保护账号安全"
+                placeholder="至少6位字符"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}

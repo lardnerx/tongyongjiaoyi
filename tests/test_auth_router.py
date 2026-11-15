@@ -743,3 +743,93 @@ class TestUserInfoUpdateChain:
         # 服务端先读取文件，后校验大小
         assert resp.status_code == 401
         assert "超过 5MB" in resp.json()["message"]
+
+
+def _make_strict_app() -> FastAPI:
+    """严格认证模式应用（生产配置）。"""
+    server = UMCPServer()
+    server.set_auth_provider(PhoneAuthProvider(strict_auth=True))
+    server.use_in_memory_repositories()
+    jwt_service = JwtService(secret="test-secret")
+
+    app = FastAPI()
+    app.state.server = server
+    app.state.jwt_service = jwt_service
+    app.include_router(router, prefix="/api/v1/auth")
+    register_exception_handlers(app)
+    return app
+
+
+class TestStrictAuth:
+    """严格认证模式：禁止自动建号、强制密码、关闭免验证重置密码。"""
+
+    def test_login_unregistered_phone_rejected(self):
+        client = TestClient(_make_strict_app())
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13700000001", "password": "whatever123"},
+        )
+        assert resp.status_code == 401
+        assert "未注册" in resp.json()["message"]
+
+    def test_login_user_without_password_rejected(self):
+        app = _make_strict_app()
+        provider = app.state.server.auth_provider
+        # 直接落库一个无密码的历史账号
+        provider._user_repo.save(provider._build_user("13700000002"))
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13700000002", "password": "whatever123"},
+        )
+        assert resp.status_code == 401
+        assert "未设置密码" in resp.json()["message"]
+
+    def test_register_without_password_rejected(self):
+        client = TestClient(_make_strict_app())
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13700000003", "name": "无密码"},
+        )
+        assert resp.status_code == 401
+        assert "密码" in resp.json()["message"]
+
+    def test_register_short_password_rejected(self):
+        client = TestClient(_make_strict_app())
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13700000004", "name": "短密码", "password": "123"},
+        )
+        assert resp.status_code == 401
+        assert "不能少于" in resp.json()["message"]
+
+    def test_reset_password_closed(self):
+        client = TestClient(_make_strict_app())
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"phone": "13700000005", "new_password": "new456"},
+        )
+        assert resp.status_code == 403
+        assert resp.json()["code"] == 1003
+        assert "暂未开放" in resp.json()["message"]
+
+    def test_register_then_login_with_password(self):
+        client = TestClient(_make_strict_app())
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13700000006", "name": "正常用户", "password": "secret123"},
+        )
+        assert reg.status_code == 200
+
+        wrong = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13700000006", "password": "wrongpass"},
+        )
+        assert wrong.status_code == 401
+
+        right = client.post(
+            "/api/v1/auth/login",
+            json={"credential_type": "phone", "token": "13700000006", "password": "secret123"},
+        )
+        assert right.status_code == 200
+        assert right.json()["code"] == 0

@@ -16,7 +16,11 @@ from umcp_core.core.domain import Credential
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_jwt_service, get_server
 from umcp_core.transport.auth import JwtService, user_from_claims
-from umcp_core.transport.errors import IllegalStateError, InvalidCredentialError
+from umcp_core.transport.errors import (
+    IllegalStateError,
+    InvalidCredentialError,
+    PermissionDeniedError,
+)
 from umcp_core.transport.schemas import Envelope, ok
 
 logger = logging.getLogger(__name__)
@@ -224,7 +228,15 @@ async def reset_password(
     req: ResetPasswordRequest,
     server: UMCPServer = Depends(get_server),
 ) -> Envelope:
-    """重置密码（无需旧密码，用于忘记密码场景）。"""
+    """重置密码（无需旧密码，用于忘记密码场景）。
+
+    严格认证模式下关闭：没有短信验证码校验时，任何知道手机号的人都能改密码，
+    会造成账号被接管。核验身份后由运维在后台重置。
+    """
+    if getattr(server.auth_provider, "strict_auth", False):
+        raise PermissionDeniedError(
+            message="密码重置功能暂未开放，请联系客服 service@jishi100.online"
+        )
     try:
         server.auth_provider.reset_password(req.phone, req.new_password)
     except ValueError as e:

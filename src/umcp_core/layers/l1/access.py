@@ -61,16 +61,33 @@ class PhoneAuthProvider(AuthProvider):
     1. 通过 register() 注册的用户（持久化到 UserRepository）
     2. 自动创建的用户（兼容旧逻辑，通过 authenticate() 首次登录时自动创建）
 
+    strict_auth:
+        False（默认，兼容开发/演示）：允许首次登录自动建号、允许未设置密码的用户登录、
+        允许免验证重置密码。
+        True（生产环境必须开启）：未注册手机号直接拒绝、未设置密码的账号拒绝登录、
+        注册必须设置密码、关闭免验证重置密码。
+
     Args:
         user_repo: 可选的 UserRepository 实例。提供后注册用户会持久化，
                    authenticate 也会优先查询仓储。
+        cache_ttl: 用户缓存有效期（秒）。
+        strict_auth: 是否启用严格认证模式，生产环境应为 True。
     """
 
-    def __init__(self, user_repo: Any = None, cache_ttl: int = 60) -> None:
+    # 密码最小长度（严格模式下注册/重置时校验）
+    MIN_PASSWORD_LENGTH = 6
+
+    def __init__(
+        self,
+        user_repo: Any = None,
+        cache_ttl: int = 60,
+        strict_auth: bool = False,
+    ) -> None:
         self._users: dict[str, User] = {}
         self._tokens: dict[str, str] = {}
         self._user_repo = user_repo
         self._cache_ttl = cache_ttl  # 缓存有效期（秒），到期后自动从仓储刷新
+        self.strict_auth = strict_auth
         self._cache_timestamps: dict[str, float] = {}  # 各用户缓存写入时间戳
         # 并发控制
         self._cache_lock = threading.Lock()  # 保护 _users / _cache_timestamps 的并发读写
@@ -176,7 +193,9 @@ class PhoneAuthProvider(AuthProvider):
                 self._verify_user_password(cached, password)
                 return cached
 
-            # 2d. 兜底：自动注册新用户（兼容旧逻辑）
+            # 2d. 兜底：严格模式拒绝未注册手机号；兼容模式自动建号（仅开发/演示）
+            if self.strict_auth:
+                raise ValueError("该手机号未注册，请先注册")
             user = self._build_user(phone)
             self._update_cache(phone, user)
             if self._user_repo:
@@ -184,13 +203,18 @@ class PhoneAuthProvider(AuthProvider):
             return user
 
     def _verify_user_password(self, user: User, password: str) -> None:
-        """验证用户密码，如果用户设置了密码但未提供或错误则抛出异常。"""
+        """验证用户密码，如果用户设置了密码但未提供或错误则抛出异常。
+
+        严格模式下，未设置密码的账号一律拒绝登录（避免任意密码通过）。
+        """
         pwd_hash = user.metadata.get("password_hash", "")
         if pwd_hash:
             if not password:
                 raise ValueError("需要密码")
             if not verify_password(password, pwd_hash):
                 raise ValueError("密码错误")
+        elif self.strict_auth:
+            raise ValueError("该账号未设置密码，请联系客服重置")
 
     def authorize(self, user: User, action: str) -> bool:
         if user.active_role is None:
@@ -217,6 +241,11 @@ class PhoneAuthProvider(AuthProvider):
             raise ValueError(f"PhoneAuthProvider 不支持凭据类型: {credential.type}")
         phone = credential.token
         password = credential.payload.get("password", "")
+        if self.strict_auth:
+            if not password:
+                raise ValueError("请设置登录密码")
+            if len(password) < self.MIN_PASSWORD_LENGTH:
+                raise ValueError(f"密码长度不能少于 {self.MIN_PASSWORD_LENGTH} 位")
         # 检查是否已注册
         if phone in self._users:
             raise ValueError(f"手机号 {phone} 已注册")
@@ -231,6 +260,9 @@ class PhoneAuthProvider(AuthProvider):
     def reset_password(self, phone: str, new_password: str) -> User:
         """重置用户密码（无需旧密码，用于忘记密码场景）。
 
+        严格模式下关闭该能力（无短信验证码会导致任意账号被接管），
+        改由运维通过后台核验身份后重置。
+
         Args:
             phone: 手机号
             new_password: 新密码
@@ -239,8 +271,12 @@ class PhoneAuthProvider(AuthProvider):
             更新后的 User 对象
 
         Raises:
-            ValueError: 用户不存在
+            ValueError: 严格模式已关闭该功能 / 新密码不合规 / 用户不存在
         """
+        if self.strict_auth:
+            raise ValueError("密码重置功能暂未开放，请联系客服 service@jishi100.online")
+        if len(new_password) < self.MIN_PASSWORD_LENGTH:
+            raise ValueError(f"密码长度不能少于 {self.MIN_PASSWORD_LENGTH} 位")
         user: User | None = None
         # 从缓存查找
         if phone in self._users:

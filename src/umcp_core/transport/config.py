@@ -34,6 +34,8 @@ class TransportConfig:
     db_pool_timeout: int = 30
     # 认证缓存策略（灰度测试用）
     auth_cache_ttl: int = 60
+    # 严格认证模式：禁止自动建号、强制密码登录、关闭免验证重置密码（生产必须为 True）
+    auth_strict: bool = True
     # 支付网关配置（为空则使用 Mock 网关）
     wechat_app_id: str = ""
     wechat_mch_id: str = ""
@@ -80,6 +82,7 @@ class TransportConfig:
             db_pool_recycle=_env_int("UMCP_DB_POOL_RECYCLE", 3600),
             db_pool_timeout=_env_int("UMCP_DB_POOL_TIMEOUT", 30),
             auth_cache_ttl=_env_int("UMCP_AUTH_CACHE_TTL", 60),
+            auth_strict=os.getenv("UMCP_AUTH_STRICT", "true").strip().lower() != "false",
             # 微信支付配置
             wechat_app_id=os.getenv("WECHAT_APP_ID", ""),
             wechat_mch_id=os.getenv("WECHAT_MCH_ID", ""),

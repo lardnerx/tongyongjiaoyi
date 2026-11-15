@@ -25,6 +25,10 @@ export default function LoginPage() {
       setError("请输入手机号");
       return;
     }
+    if (!password) {
+      setError("请输入密码");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -32,7 +36,7 @@ export default function LoginPage() {
       const tokenResp = await apiClient.post<TokenResponse>("/auth/login", {
         credential_type: "phone",
         token: phone,
-        password: password || undefined,
+        password,
       } as LoginRequest & { password?: string });
       setTokens(tokenResp.access_token, tokenResp.refresh_token);
 
@@ -85,10 +89,10 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">密码（可选）</label>
+              <label className="text-sm font-medium">密码</label>
               <Input
                 type="password"
-                placeholder="已设置密码的用户请输入"
+                placeholder="请输入登录密码"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}

@@ -18,6 +18,7 @@ import os
 import sys
 from pathlib import Path
 
+from umcp_core.layers.l1 import PhoneAuthProvider
 from umcp_core.server import UMCPServer
 from umcp_core.transport.app import create_app
 from umcp_core.transport.config import TransportConfig
@@ -55,6 +56,13 @@ def main() -> None:
         pass
     config = TransportConfig.from_env()
     server = UMCPServer()
+    # 应用严格认证策略：禁止自动建号、强制密码登录、关闭免验证重置密码
+    if isinstance(server.auth_provider, PhoneAuthProvider):
+        server.auth_provider.strict_auth = config.auth_strict
+    print(
+        f"[UMCP] 认证模式: {'严格（禁止自动建号/强制密码）' if config.auth_strict else '兼容（允许自动建号，仅限开发）'}",
+        file=sys.stderr,
+    )
     if config.db_dsn:
         server.use_postgres_repositories(
             config.db_dsn,
