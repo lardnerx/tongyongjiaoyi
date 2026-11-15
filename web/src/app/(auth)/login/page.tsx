@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SiteFooter } from "@/components/site-footer";
 import type { TokenResponse, UserInfo, LoginRequest } from "@/types/api";
 
 export default function LoginPage() {
@@ -49,7 +50,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.05),transparent_55%)]" />
       <Card className="relative w-full max-w-md border-gray-200/80 shadow-sm">
         <CardHeader className="space-y-0 pb-6 pt-8">
@@ -109,8 +110,21 @@ export default function LoginPage() {
               立即注册
             </Link>
           </div>
+          <p className="mt-4 text-center text-xs leading-relaxed text-gray-400">
+            登录即表示您已阅读并同意
+            <Link href="/terms" className="text-gray-500 hover:underline">
+              《用户协议》
+            </Link>
+            和
+            <Link href="/privacy" className="text-gray-500 hover:underline">
+              《隐私政策》
+            </Link>
+          </p>
         </CardContent>
       </Card>
+      <div className="relative w-full max-w-md">
+        <SiteFooter />
+      </div>
     </div>
   );
 }

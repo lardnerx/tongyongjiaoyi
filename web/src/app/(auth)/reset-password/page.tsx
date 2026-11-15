@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { SiteFooter } from "@/components/site-footer";
 import type { ResetPasswordRequest } from "@/types/api";
 
 export default function ResetPasswordPage() {
@@ -59,8 +60,8 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
+      <Card className="relative w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">重置密码</CardTitle>
           <CardDescription>
@@ -130,6 +131,9 @@ export default function ResetPasswordPage() {
           </div>
         </CardContent>
       </Card>
+      <div className="w-full max-w-md">
+        <SiteFooter />
+      </div>
     </div>
   );
 }

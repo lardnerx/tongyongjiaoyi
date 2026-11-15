@@ -7,7 +7,14 @@ export function middleware(request: NextRequest) {
   const authToken = request.cookies.get("auth-token")?.value;
   const activeRole = request.cookies.get("active-role")?.value;
 
-  const publicPaths = ["/login", "/register", "/forgot-password"];
+  const publicPaths = [
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/terms",
+    "/privacy",
+  ];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
 
   // 受保护路径：/dashboard、/escort、/admin 等（除 publicPaths 外的全部路径）
