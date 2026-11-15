@@ -11,6 +11,10 @@ export function SiteFooter() {
   return (
     <footer className="mt-6 space-y-1.5 text-center text-xs text-gray-400">
       <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        <Link href="/about" className="hover:text-gray-600 hover:underline">
+          关于我们
+        </Link>
+        <span className="text-gray-300">|</span>
         <Link href="/terms" className="hover:text-gray-600 hover:underline">
           用户协议
         </Link>

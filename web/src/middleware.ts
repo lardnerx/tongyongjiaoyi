@@ -14,6 +14,7 @@ export function middleware(request: NextRequest) {
     "/reset-password",
     "/terms",
     "/privacy",
+    "/about",
   ];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
 
