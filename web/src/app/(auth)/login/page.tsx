@@ -49,10 +49,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">陪驾平台登录</CardTitle>
+    <div className="relative flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.05),transparent_55%)]" />
+      <Card className="relative w-full max-w-md border-gray-200/80 shadow-sm">
+        <CardHeader className="space-y-0 pb-6 pt-8">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-900 text-white shadow-sm">
+              <span className="text-xs font-semibold tracking-tight">100%</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <CardTitle className="text-center text-2xl font-semibold tracking-tight">
+                即时百分百
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="h-px w-6 bg-gray-200" />
+                <span className="mr-[-0.25em] text-[11px] font-medium tracking-[0.25em] text-gray-400">
+                  在线服务
+                </span>
+                <span className="h-px w-6 bg-gray-200" />
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
