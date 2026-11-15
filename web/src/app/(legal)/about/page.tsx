@@ -79,10 +79,6 @@ export default function AboutPage() {
               </a>
             </dd>
           </div>
-          <div className="flex gap-3 px-4 py-3">
-            <dt className="w-28 shrink-0 text-gray-400">服务时间</dt>
-            <dd className="text-gray-700">每日 09:00 - 21:00</dd>
-          </div>
         </dl>
       </section>
 
