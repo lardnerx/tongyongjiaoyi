@@ -1,0 +1,21 @@
+# 同步清单：一行一个仓库相对路径，可写注释
+# web/ 前缀的文件改动 → 触发前端重建；其余 → 触发后端重启
+.env.example
+src/umcp_core/layers/l1/access.py
+src/umcp_core/transport/__main__.py
+src/umcp_core/transport/config.py
+src/umcp_core/transport/routers/auth.py
+web/src/app/layout.tsx
+web/src/middleware.ts
+web/src/lib/api-client.ts
+web/src/lib/auth-store.ts
+web/src/components/site-footer.tsx
+web/src/components/avatar-upload.tsx
+web/src/app/(auth)/login/page.tsx
+web/src/app/(auth)/register/page.tsx
+web/src/app/(auth)/reset-password/page.tsx
+web/src/app/(legal)/layout.tsx
+web/src/app/(legal)/terms/page.tsx
+web/src/app/(legal)/privacy/page.tsx
+web/src/app/(legal)/about/page.tsx
+web/src/app/(protected)/dashboard/page.tsx
