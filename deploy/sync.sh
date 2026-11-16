@@ -1,17 +1,40 @@
 #!/bin/bash
 # =============================================================================
-# 按 Git 引用从 jsDelivr 同步源码到服务器，并按需重启后端/前端
+# /opt/umcp/sync.sh —— 服务器代码发布脚本
 #
-# 用法:
-#   ./sync.sh <ref>            # 同步并重启（ref = commit SHA 或分支名）
-#   ./sync.sh <ref> api        # 仅后端
-#   ./sync.sh <ref> web        # 仅前端
-#   ./sync.sh main             # 用分支最新（jsDelivr 对分支有缓存，生产建议用 SHA）
+# 【作用】
+#   服务器访问 GitHub 不通，所以不走 git pull。
+#   本脚本按指定的 Git commit，从 jsDelivr CDN 拉取清单内的源码文件覆盖到
+#   /opt/umcp，然后按需重启后端（systemd: umcp）或重建前端（pm2: web），
+#   最后做健康检查，失败即报错退出。
 #
-# 说明:
-#   - 覆盖哪些文件由 deploy/sync-manifest.txt 决定，改文件清单请改该清单
-#   - 不会触碰 .env；数据库、证书、pm2/systemd 配置均不在同步范围
-#   - 任一健康检查失败会以非 0 退出，方便人工介入
+# 【同步范围】
+#   由仓库 deploy/sync-manifest.txt 决定，一行一个文件路径：
+#     - web/ 开头的文件 → 触发前端 npm run build + pm2 restart web
+#     - 其余文件        → 触发后端 systemctl restart umcp
+#   不触碰 .env、数据库、Nginx 配置、证书、pm2/systemd 配置。
+#
+# 【用法】
+#   cd /opt/umcp
+#   ./sync.sh <commit SHA>          # 全量：后端 + 前端
+#   ./sync.sh <commit SHA> api      # 只更新后端
+#   ./sync.sh <commit SHA> web      # 只更新前端
+#
+# 【发布流程】
+#   1) 本地改代码 → git push
+#   2) 本地取 commit：git rev-parse HEAD
+#   3) 服务器执行：./sync.sh <上面的 SHA>
+#   4) 输出末尾出现「同步完成」，且 health=200 / login=200 即发布成功
+#
+# 【注意】
+#   - 生产请用 commit SHA，不要用 main：jsDelivr 对分支有缓存，可能拉到旧文件
+#   - 脚本不会自动更新自己，若 sync.sh 本身有改动，重新下载安装一次
+#   - 新增要发布的文件，必须在 deploy/sync-manifest.txt 里加一行，否则不会同步
+#
+# 【失败排查】
+#   - 后端失败：journalctl -u umcp -n 50 --no-pager
+#   - 前端失败：pm2 logs web --lines 50
+#   - 拉取失败：三个镜像 cdn/fastly/gcore 都超时的话，检查服务器出网
 # =============================================================================
 set -euo pipefail
 
