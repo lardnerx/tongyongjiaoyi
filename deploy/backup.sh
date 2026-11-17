@@ -9,6 +9,10 @@
 # 失败：写 /var/log/umcp/healthwatch.log 并返回非 0
 #
 # 异地副本（COS/OSS）待对象存储开通后在本脚本末尾追加 rclone 上传。
+#
+# 恢复方式（dump 属 root 600，需 root 读文件、postgres 执行恢复）：
+#   sudo -u postgres createdb umcp_restore_test
+#   sudo -u postgres pg_restore -d umcp_restore_test --no-owner < /var/backups/umcp/umcp_XXXX.dump
 # =============================================================================
 set -uo pipefail
 

@@ -86,6 +86,9 @@
     2. `umcp-backup.service` + `umcp-backup.timer`：每日 03:30（`Persistent=true` 补跑错过的执行）
     3. 成功 `touch /var/backups/umcp/.last_success`，失败写 `/var/log/umcp/healthwatch.log`
     4. 4.3 联动：`umcp-healthwatch.service` 设 `BACKUP_DIR=/var/backups/umcp`、`BACKUP_MAX_AGE_HOURS=26`，超期自动 ALERT
+  - 本地部分生产验证通过（2026-11-17，commit `fb8fff5`/`18bcf8e`）：首次备份产出 `umcp_20261117_1340.dump`（21K）与 `umcp_secrets_*.tar.gz`（2.1K），`pg_restore --list` 自检通过；`umcp-backup.timer` NEXT 为次日 03:30；巡检 `backup ok 最新备份 0 小时前`
+  - 恢复演练通过：`pg_restore` 到 `umcp_restore_test` 后 `users=2 / deals=0 / notifications=1`，与生产一致；注意 dump 为 600/root，恢复时用 `sudo -u postgres pg_restore ... < "$DUMP"` 由 root 读文件
+  - 已知坑：`sync.sh` 覆盖文件会丢可执行位，systemd 单元已改为 `/bin/bash <script>` 调用
   - 待接入（异地）：rclone 上传私有 COS `umcp/db/`，保留 30 天
   - 恢复演练（验收项 6）：取最新 dump → 创建 `umcp_restore_test` → `pg_restore` → 抽查 `users`/`deals`/`notifications` 行数 → 删除测试库
 - [ ] 4.5 发布通道固化（`/opt/umcp/sync.sh` 已可用，补 commit 记录表）
