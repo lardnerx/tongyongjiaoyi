@@ -1,6 +1,9 @@
 # 同步清单：一行一个仓库相对路径，可写注释
 # web/ 前缀的文件改动 → 触发前端重建；其余 → 触发后端重启
 .env.example
+deploy/healthwatch.sh
+deploy/umcp-healthwatch.service
+deploy/umcp-healthwatch.timer
 src/umcp_core/layers/l1/access.py
 src/umcp_core/repositories/postgres/bundle.py
 src/umcp_core/repositories/postgres/converters.py

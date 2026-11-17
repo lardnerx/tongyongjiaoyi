@@ -1,0 +1,11 @@
+[Unit]
+Description=UMCP 健康巡检（每分钟）
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=umcp-healthwatch.service
+
+[Install]
+WantedBy=timers.target

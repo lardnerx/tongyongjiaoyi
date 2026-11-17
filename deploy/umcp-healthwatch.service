@@ -1,0 +1,9 @@
+[Unit]
+Description=UMCP 健康巡检
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/umcp/deploy/healthwatch.sh
+Nice=10
