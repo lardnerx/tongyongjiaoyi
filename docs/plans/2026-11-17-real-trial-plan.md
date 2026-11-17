@@ -64,6 +64,9 @@
 ## 四、P1 阶段 4：稳定性与运维
 
 - [x] 4.1 规则配置持久化（`PostgresRuleRepository` 注入 + `business_rules` / `business_rule_history` 建表，支持标量/列表值）
+  - 生产验证通过（2026-11-17，commit `dbc5e6e`）：PUT 后 `version=1`，`systemctl restart umcp` 后 GET 仍为 `version=1`、`is_default=false`，两表各有 1 行
+  - 顺带修复 `user_from_orm` 对 roles 脏数据（列表）的容错，并支持还原 admin 角色
+  - 同步清单补齐 `repositories/postgres/converters.py`、`transport/routers/admin/rules.py`
 - [ ] 4.2 通知留痕（站内消息表）
 - [ ] 4.3 监控告警（可用性、5xx、DB 连接数、磁盘、备份失败）
 - [ ] 4.4 备份异地副本（COS/OSS）
