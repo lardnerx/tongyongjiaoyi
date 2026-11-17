@@ -50,6 +50,21 @@ def test_payment_service_registered(server_with_escort):
     assert isinstance(server_with_escort.payment_service, PaymentService)
 
 
+def test_payment_service_uses_injected_repository():
+    """register_plugin 应优先使用 server 注入的支付仓储（生产为 PG 实现）。"""
+    from umcp_core.server import UMCPServer
+    from umcp_core.shared.payment.repository import InMemoryPaymentRepository
+    from plugins.escort_driving import register_plugin
+
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    injected = InMemoryPaymentRepository()
+    server.payment_repo = injected
+    register_plugin(server)
+
+    assert server.payment_service.repo is injected
+
+
 def test_payment_service_uses_event_bus(server_with_escort):
     """PaymentService 应共享 server.event_bus，事件能被订阅者收到。"""
     received = []

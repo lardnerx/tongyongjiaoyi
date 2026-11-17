@@ -53,6 +53,10 @@ from umcp_core.repositories.interfaces import (
 from umcp_core.repositories.postgres.bundle import PostgresRepositoryBundle
 from umcp_core.repositories.postgres.converters import task_to_orm
 from umcp_core.repositories.postgres.models import CompositeDependencyModel
+from umcp_core.shared.payment.repository import (
+    InMemoryPaymentRepository,
+    PostgresPaymentRepository,
+)
 
 
 class PluginDescriptor:
@@ -98,6 +102,9 @@ class UMCPServer:
         self.user_repo: UserRepository | None = None
         self.trust_repo: TrustRepository | None = None
         self.event_repo: EventRepository | None = None
+        self.payment_repo: (
+            InMemoryPaymentRepository | PostgresPaymentRepository | None
+        ) = None
 
         # 按 domain 索引的策略注册表（多插件并存支持）
         self._match_strategies: dict[str, MatchStrategy] = {}
@@ -162,6 +169,7 @@ class UMCPServer:
         self.user_repo = bundle.user_repo
         self.trust_repo = bundle.trust_repo
         self.event_repo = bundle.event_repo
+        self.payment_repo = bundle.payment_repo
         self.event_bus.subscribe_all(self.event_repo.append)
         self._postgres_bundle = bundle
         # 将 user_repo 注入到 PhoneAuthProvider
@@ -184,6 +192,7 @@ class UMCPServer:
         self.user_repo = bundle.user_repo
         self.trust_repo = bundle.trust_repo
         self.event_repo = bundle.event_repo
+        self.payment_repo = InMemoryPaymentRepository()
         # 同步把 event_bus 的事件落库
         self.event_bus.subscribe_all(self.event_repo.append)
         # 将 user_repo 注入到 PhoneAuthProvider

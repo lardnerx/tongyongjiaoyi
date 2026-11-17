@@ -86,6 +86,8 @@ class InMemoryPaymentRepository:
     ) -> None:
         if payment_id in self._items:
             self._items[payment_id]["status"] = status.value
+            if status is PaymentStatusEnum.REFUNDED:
+                self._items[payment_id]["refunded_at"] = datetime.utcnow()
             if trade_no:
                 self._items[payment_id]["trade_no"] = trade_no
             if paid_at:
@@ -156,7 +158,10 @@ class PostgresPaymentRepository:
             m = session.get(PaymentModel, payment_id)
             if m is None:
                 return
-            m.status = status.value if isinstance(status, PaymentStatusEnum) else str(status)
+            target = status.value if isinstance(status, PaymentStatusEnum) else str(status)
+            m.status = target
+            if target == PaymentStatusEnum.REFUNDED.value:
+                m.refunded_at = datetime.utcnow()
             if trade_no:
                 m.trade_no = trade_no
             if paid_at:

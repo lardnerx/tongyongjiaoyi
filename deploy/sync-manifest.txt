@@ -2,9 +2,14 @@
 # web/ 前缀的文件改动 → 触发前端重建；其余 → 触发后端重启
 .env.example
 src/umcp_core/layers/l1/access.py
+src/umcp_core/repositories/postgres/bundle.py
+src/umcp_core/server.py
+src/umcp_core/shared/payment/repository.py
+src/umcp_core/shared/payment/service.py
 src/umcp_core/transport/__main__.py
 src/umcp_core/transport/config.py
 src/umcp_core/transport/routers/auth.py
+plugins/escort_driving/__init__.py
 web/src/app/layout.tsx
 web/src/middleware.ts
 web/src/lib/api-client.ts

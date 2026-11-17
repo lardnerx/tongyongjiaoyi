@@ -93,9 +93,11 @@ def register_plugin(server: "UMCPServer") -> None:
 
     server.payment_service = PaymentService(
         gateway=gateway,
-        repo=InMemoryPaymentRepository(),
+        # 生产环境使用 server 注入的持久化仓储；未注入时回退内存实现
+        repo=getattr(server, "payment_repo", None) or InMemoryPaymentRepository(),
         event_bus=server.event_bus,
     )
+    logger.info("支付仓储: %s", type(server.payment_service.repo).__name__)
     # 注册规则配置中心（内存仓储 + 默认值预加载，挂载到 server.rule_config）
     from umcp_core.shared.rules.config import RuleConfig
     from umcp_core.shared.rules.repository import InMemoryRuleRepository

@@ -14,7 +14,10 @@ from umcp_core.shared.payment.base import (
     PaymentStatusEnum,
     PaymentType,
 )
-from umcp_core.shared.payment.repository import InMemoryPaymentRepository
+from umcp_core.shared.payment.repository import (
+    InMemoryPaymentRepository,
+    PostgresPaymentRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class PaymentService:
     def __init__(
         self,
         gateway: PaymentGateway,
-        repo: InMemoryPaymentRepository,
+        repo: InMemoryPaymentRepository | PostgresPaymentRepository,
         event_bus: EventBus,
     ) -> None:
         self._gateway = gateway
@@ -39,7 +42,7 @@ class PaymentService:
         self._event_bus = event_bus
 
     @property
-    def repo(self) -> InMemoryPaymentRepository:
+    def repo(self) -> InMemoryPaymentRepository | PostgresPaymentRepository:
         return self._repo
 
     def create_payment(

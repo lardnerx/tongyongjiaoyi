@@ -532,3 +532,87 @@ class TestPostgresListAll:
         deal_ids = {d.deal_id for d in result}
         assert d1.deal_id in deal_ids
         assert d2.deal_id in deal_ids
+
+
+class TestPostgresPaymentRepository:
+    """支付单持久化测试。"""
+
+    def _save(self, repo, payment_id="pay-1", deal_id="deal-1"):
+        from umcp_core.shared.payment.base import PaymentStatusEnum, PaymentType
+
+        repo.save(
+            payment_id=payment_id,
+            deal_id=deal_id,
+            user_id="user-1",
+            amount=100.0,
+            payment_type=PaymentType.DEPOSIT,
+            status=PaymentStatusEnum.PENDING,
+            gateway="MockGateway",
+            metadata={"source": "test"},
+        )
+
+    def test_bundle_provides_payment_repo(self, pg_bundle):
+        from umcp_core.shared.payment.repository import PostgresPaymentRepository
+
+        assert isinstance(pg_bundle.payment_repo, PostgresPaymentRepository)
+
+    def test_save_and_find_by_id(self, pg_bundle):
+        repo = pg_bundle.payment_repo
+        self._save(repo)
+
+        found = repo.find_by_id("pay-1")
+        assert found is not None
+        assert found["deal_id"] == "deal-1"
+        assert found["user_id"] == "user-1"
+        assert found["amount"] == 100.0
+        assert found["type"] == "deposit"
+        assert found["status"] == "pending"
+        assert found["metadata"] == {"source": "test"}
+
+    def test_find_by_deal_and_status(self, pg_bundle):
+        from umcp_core.shared.payment.base import PaymentStatusEnum
+
+        repo = pg_bundle.payment_repo
+        self._save(repo, "pay-1", "deal-1")
+        self._save(repo, "pay-2", "deal-1")
+
+        assert len(repo.find_by_deal("deal-1")) == 2
+        assert len(repo.find_by_status(PaymentStatusEnum.PENDING)) == 2
+        assert repo.find_by_status(PaymentStatusEnum.PAID) == []
+
+    def test_update_status_paid(self, pg_bundle):
+        from umcp_core.shared.payment.base import PaymentStatusEnum
+
+        repo = pg_bundle.payment_repo
+        self._save(repo)
+        paid_at = datetime(2026, 11, 17, 10, 0, 0)
+        repo.update_status(
+            "pay-1", PaymentStatusEnum.PAID, trade_no="wx-123", paid_at=paid_at
+        )
+
+        found = repo.find_by_id("pay-1")
+        assert found["status"] == "paid"
+        assert found["trade_no"] == "wx-123"
+        assert found["paid_at"] == paid_at
+
+    def test_refund_sets_status_and_refunded_at(self, pg_bundle):
+        from umcp_core.shared.payment.base import PaymentStatusEnum
+
+        repo = pg_bundle.payment_repo
+        self._save(repo)
+        repo.update_status("pay-1", PaymentStatusEnum.REFUNDED)
+
+        found = repo.find_by_id("pay-1")
+        assert found["status"] == "refunded"
+        assert found["refunded_at"] is not None
+
+    def test_record_survives_new_repository_instance(self, pg_bundle):
+        """模拟重启：新仓储实例仍可读到已落库的支付单。"""
+        from umcp_core.shared.payment.repository import PostgresPaymentRepository
+
+        self._save(pg_bundle.payment_repo)
+
+        new_repo = PostgresPaymentRepository(pg_bundle.SessionFactory)
+        found = new_repo.find_by_id("pay-1")
+        assert found is not None
+        assert found["deal_id"] == "deal-1"

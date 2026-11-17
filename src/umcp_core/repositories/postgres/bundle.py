@@ -14,10 +14,11 @@ from umcp_core.repositories.postgres.resource_repo import PostgresResourceReposi
 from umcp_core.repositories.postgres.task_repo import PostgresTaskRepository
 from umcp_core.repositories.postgres.trust_repo import PostgresTrustRepository
 from umcp_core.repositories.postgres.user_repo import PostgresUserRepository
+from umcp_core.shared.payment.repository import PostgresPaymentRepository
 
 
 class PostgresRepositoryBundle:
-    """PostgreSQL 仓储套件，提供 6 个仓储 + 事件仓储。
+    """PostgreSQL 仓储套件，提供 6 个仓储 + 事件仓储 + 支付仓储。
 
     用法：
         bundle = PostgresRepositoryBundle("postgresql://...")
@@ -52,6 +53,7 @@ class PostgresRepositoryBundle:
         self.user_repo = PostgresUserRepository(self.SessionFactory)
         self.trust_repo = PostgresTrustRepository(self.SessionFactory)
         self.event_repo = PostgresEventRepository(self.SessionFactory)
+        self.payment_repo = PostgresPaymentRepository(self.SessionFactory)
 
     @contextmanager
     def transaction(self) -> Session:
