@@ -236,7 +236,13 @@ def user_from_orm(model: UserModel) -> Any:
     注意：User 是抽象类，需要按 user_type 重建子类。
     此函数创建一个通用 User 子类实例。
     """
-    from umcp_core.core.base import Demander, PermissionSet, Supplier, User as UserBase
+    from umcp_core.core.base import (
+        Demander,
+        PermissionSet,
+        Role,
+        Supplier,
+        User as UserBase,
+    )
 
     class _GenericUser(UserBase):
         def __init__(self, user_id: str, name: str, metadata: dict | None = None) -> None:
@@ -250,9 +256,11 @@ def user_from_orm(model: UserModel) -> Any:
         name=model.name,
         metadata=model.metadata_ or {},
     )
-    # 恢复 roles
-    for role_type, role_data in (model.roles or {}).items():
-        perms = PermissionSet(set(role_data.get("permissions", [])))
+    # 恢复 roles（roles 必须是 dict；脏数据按无角色处理，避免登录直接 500）
+    roles_data = model.roles if isinstance(model.roles, dict) else {}
+    for role_type, role_data in roles_data.items():
+        data = role_data if isinstance(role_data, dict) else {}
+        perms = PermissionSet(set(data.get("permissions", [])))
         if role_type == "demander":
             class _RestoredDemander(Demander):
                 @property
@@ -267,6 +275,17 @@ def user_from_orm(model: UserModel) -> Any:
                     return perms
 
             user.add_role(_RestoredSupplier())
+        elif role_type == "admin":
+            class _RestoredAdmin(Role):
+                @property
+                def role_type(self) -> str:
+                    return "admin"
+
+                @property
+                def permissions(self) -> PermissionSet:
+                    return perms
+
+            user.add_role(_RestoredAdmin())
     return user
 
 

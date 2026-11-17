@@ -341,3 +341,22 @@ class TestUserConverter:
         restored = user_from_orm(model)
         assert restored.user_id == "u-2"
         assert restored.name == "李四"
+
+    def test_admin_role_restored(self):
+        """roles 中的 admin 应被还原，供管理端接口做权限校验。"""
+        user = _TestUser(user_id="u-3", name="管理员")
+        model = user_to_orm(user)
+        model.roles = {"admin": {"permissions": ["manage_rules"]}}
+
+        restored = user_from_orm(model)
+        assert "admin" in restored.roles
+        assert "manage_rules" in restored.roles["admin"].permissions
+
+    def test_malformed_roles_does_not_raise(self):
+        """roles 存成列表等脏数据时应忽略，而不是让登录 500。"""
+        user = _TestUser(user_id="u-4", name="脏数据")
+        model = user_to_orm(user)
+        model.roles = ["admin"]
+
+        restored = user_from_orm(model)
+        assert restored.roles == {}
