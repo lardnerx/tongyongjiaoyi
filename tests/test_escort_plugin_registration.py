@@ -65,6 +65,21 @@ def test_payment_service_uses_injected_repository():
     assert server.payment_service.repo is injected
 
 
+def test_rule_config_uses_injected_repository():
+    """register_plugin 应优先使用 server 注入的规则仓储（生产为 PG 实现）。"""
+    from umcp_core.server import UMCPServer
+    from umcp_core.shared.rules.repository import InMemoryRuleRepository
+    from plugins.escort_driving import register_plugin
+
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    injected = InMemoryRuleRepository()
+    server.rule_repo = injected
+    register_plugin(server)
+
+    assert server.rule_config._repo is injected
+
+
 def test_payment_service_uses_event_bus(server_with_escort):
     """PaymentService 应共享 server.event_bus，事件能被订阅者收到。"""
     received = []

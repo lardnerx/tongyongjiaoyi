@@ -14,6 +14,11 @@ from umcp_core.repositories.postgres.resource_repo import PostgresResourceReposi
 from umcp_core.repositories.postgres.task_repo import PostgresTaskRepository
 from umcp_core.repositories.postgres.trust_repo import PostgresTrustRepository
 from umcp_core.repositories.postgres.user_repo import PostgresUserRepository
+from umcp_core.shared.rules.models import (  # noqa: F401  导入以注册建表元数据
+    BusinessRuleHistoryModel,
+    BusinessRuleModel,
+)
+from umcp_core.shared.rules.repository import PostgresRuleRepository
 from umcp_core.shared.payment.repository import PostgresPaymentRepository
 
 
@@ -53,6 +58,7 @@ class PostgresRepositoryBundle:
         self.user_repo = PostgresUserRepository(self.SessionFactory)
         self.trust_repo = PostgresTrustRepository(self.SessionFactory)
         self.event_repo = PostgresEventRepository(self.SessionFactory)
+        self.rule_repo = PostgresRuleRepository(self.SessionFactory)
         self.payment_repo = PostgresPaymentRepository(self.SessionFactory)
 
     @contextmanager

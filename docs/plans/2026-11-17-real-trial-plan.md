@@ -63,7 +63,7 @@
 
 ## 四、P1 阶段 4：稳定性与运维
 
-- [ ] 4.1 规则配置持久化（当前 `InMemoryRuleRepository`，重启还原）
+- [x] 4.1 规则配置持久化（`PostgresRuleRepository` 注入 + `business_rules` / `business_rule_history` 建表，支持标量/列表值）
 - [ ] 4.2 通知留痕（站内消息表）
 - [ ] 4.3 监控告警（可用性、5xx、DB 连接数、磁盘、备份失败）
 - [ ] 4.4 备份异地副本（COS/OSS）

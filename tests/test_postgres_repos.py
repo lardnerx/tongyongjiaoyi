@@ -616,3 +616,74 @@ class TestPostgresPaymentRepository:
         found = new_repo.find_by_id("pay-1")
         assert found is not None
         assert found["deal_id"] == "deal-1"
+
+
+class TestPostgresRuleRepository:
+    """规则配置持久化测试。"""
+
+    def test_bundle_provides_rule_repo(self, pg_bundle):
+        from umcp_core.shared.rules.repository import PostgresRuleRepository
+
+        assert isinstance(pg_bundle.rule_repo, PostgresRuleRepository)
+
+    def test_upsert_and_find_by_key(self, pg_bundle):
+        repo = pg_bundle.rule_repo
+        repo.upsert(
+            "payment.timeout_seconds",
+            1800,
+            updated_by="admin",
+            category="payment",
+            description="支付超时时间",
+        )
+
+        found = repo.find_by_key("payment.timeout_seconds")
+        assert found is not None
+        assert found["rule_value"] == 1800
+        assert found["version"] == 1
+        assert found["category"] == "payment"
+
+    def test_upsert_supports_list_value(self, pg_bundle):
+        """阶梯罚金是列表类型，需无损存取。"""
+        repo = pg_bundle.rule_repo
+        tiers = [
+            {"hours_before": 24, "penalty": 0.2},
+            {"hours_before": 4, "penalty": 0.5},
+        ]
+        repo.upsert("escort.cancel.scheduled.penalty_tiers", tiers, "admin", "cancel")
+
+        assert repo.find_by_key("escort.cancel.scheduled.penalty_tiers")["rule_value"] == tiers
+
+    def test_upsert_increments_version_and_records_history(self, pg_bundle):
+        repo = pg_bundle.rule_repo
+        repo.upsert("payment.timeout_seconds", 1800, "admin", "payment")
+        repo.upsert("payment.timeout_seconds", 900, "admin", "payment", reason="缩短超时")
+
+        found = repo.find_by_key("payment.timeout_seconds")
+        assert found["version"] == 2
+        assert found["rule_value"] == 900
+
+        history = repo.history("payment.timeout_seconds")
+        assert len(history) == 2
+        assert history[0]["old_value"] is None
+        assert history[1]["old_value"] == 1800
+        assert history[1]["new_value"] == 900
+        assert history[1]["change_reason"] == "缩短超时"
+
+    def test_list_by_category(self, pg_bundle):
+        repo = pg_bundle.rule_repo
+        repo.upsert("payment.timeout_seconds", 1800, "admin", "payment")
+        repo.upsert("escort.cancel.realtime.timeout_seconds", 60, "admin", "cancel")
+
+        assert len(repo.list_by_category("payment")) == 1
+        assert len(repo.list_all()) == 2
+
+    def test_record_survives_new_repository_instance(self, pg_bundle):
+        """模拟重启：新仓储实例仍可读到已落库的规则。"""
+        from umcp_core.shared.rules.repository import PostgresRuleRepository
+
+        pg_bundle.rule_repo.upsert("payment.timeout_seconds", 1800, "admin", "payment")
+
+        new_repo = PostgresRuleRepository(pg_bundle.SessionFactory)
+        found = new_repo.find_by_key("payment.timeout_seconds")
+        assert found is not None
+        assert found["rule_value"] == 1800

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import Any
+
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,7 +19,8 @@ class BusinessRuleModel(Base):
     __tablename__ = "business_rules"
 
     rule_key: Mapped[str] = mapped_column(String(128), primary_key=True)
-    rule_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # 规则值可为标量、列表或对象，统一用 JSONB 存储
+    rule_value: Mapped[Any] = mapped_column(JSONB, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -32,8 +35,8 @@ class BusinessRuleHistoryModel(Base):
 
     history_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     rule_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    old_value: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
     changed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

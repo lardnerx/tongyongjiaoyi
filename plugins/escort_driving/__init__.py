@@ -98,11 +98,13 @@ def register_plugin(server: "UMCPServer") -> None:
         event_bus=server.event_bus,
     )
     logger.info("支付仓储: %s", type(server.payment_service.repo).__name__)
-    # 注册规则配置中心（内存仓储 + 默认值预加载，挂载到 server.rule_config）
+    # 注册规则配置中心（持久化仓储 + 默认值预加载，挂载到 server.rule_config）
     from umcp_core.shared.rules.config import RuleConfig
     from umcp_core.shared.rules.repository import InMemoryRuleRepository
 
-    rule_config = RuleConfig(repo=InMemoryRuleRepository())
+    # 生产环境使用 server 注入的持久化仓储；未注入时回退内存实现
+    rule_config = RuleConfig(repo=getattr(server, "rule_repo", None) or InMemoryRuleRepository())
+    logger.info("规则仓储: %s", type(rule_config._repo).__name__)
     rule_config.set_defaults(
         {
             "escort.cancel.realtime.timeout_seconds": 60,

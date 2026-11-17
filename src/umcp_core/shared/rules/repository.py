@@ -24,7 +24,7 @@ class RuleRepositoryProtocol(Protocol):
     def upsert(
         self,
         rule_key: str,
-        rule_value: dict[str, Any],
+        rule_value: Any,
         updated_by: str,
         category: str,
         description: str | None = None,
@@ -126,7 +126,7 @@ class PostgresRuleRepository:
     def upsert(
         self,
         rule_key: str,
-        rule_value: dict[str, Any],
+        rule_value: Any,
         updated_by: str,
         category: str,
         description: str | None = None,
@@ -136,12 +136,12 @@ class PostgresRuleRepository:
 
         with self._session_factory() as session:
             m = session.get(BusinessRuleModel, rule_key)
-            old_value = dict(m.rule_value) if m else None
+            old_value = m.rule_value if m else None
             now = datetime.utcnow()
             if m is None:
                 m = BusinessRuleModel(
                     rule_key=rule_key,
-                    rule_value=dict(rule_value),
+                    rule_value=rule_value,
                     description=description,
                     category=category,
                     version=1,
@@ -150,7 +150,7 @@ class PostgresRuleRepository:
                 )
                 session.add(m)
             else:
-                m.rule_value = dict(rule_value)
+                m.rule_value = rule_value
                 m.version = m.version + 1
                 m.updated_by = updated_by
                 m.updated_at = now
@@ -160,7 +160,7 @@ class PostgresRuleRepository:
                 BusinessRuleHistoryModel(
                     rule_key=rule_key,
                     old_value=old_value,
-                    new_value=dict(rule_value),
+                    new_value=rule_value,
                     changed_by=updated_by,
                     changed_at=now,
                     change_reason=reason,
@@ -182,8 +182,8 @@ class PostgresRuleRepository:
                 {
                     "history_id": h.history_id,
                     "rule_key": h.rule_key,
-                    "old_value": dict(h.old_value) if h.old_value else None,
-                    "new_value": dict(h.new_value) if h.new_value else None,
+                    "old_value": h.old_value,
+                    "new_value": h.new_value,
                     "changed_by": h.changed_by,
                     "changed_at": h.changed_at,
                     "change_reason": h.change_reason,
@@ -195,7 +195,7 @@ class PostgresRuleRepository:
     def _to_dict(m) -> dict[str, Any]:
         return {
             "rule_key": m.rule_key,
-            "rule_value": dict(m.rule_value) if m.rule_value else {},
+            "rule_value": m.rule_value,
             "description": m.description,
             "category": m.category,
             "version": m.version,

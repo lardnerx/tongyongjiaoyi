@@ -6,6 +6,8 @@ src/umcp_core/repositories/postgres/bundle.py
 src/umcp_core/server.py
 src/umcp_core/shared/payment/repository.py
 src/umcp_core/shared/payment/service.py
+src/umcp_core/shared/rules/models.py
+src/umcp_core/shared/rules/repository.py
 src/umcp_core/transport/__main__.py
 src/umcp_core/transport/config.py
 src/umcp_core/transport/routers/auth.py
