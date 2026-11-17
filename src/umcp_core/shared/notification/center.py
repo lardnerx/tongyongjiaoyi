@@ -1,22 +1,26 @@
-"""通知中心：多渠道分发 + 模板渲染。"""
+"""通知中心：多渠道分发 + 模板渲染 + 站内消息留痕。"""
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 from umcp_core.shared.notification.base import FunctionChannel, Notification, NotificationChannel
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationCenter:
     """通知中心。
 
     - register_channel：注册渠道
-    - notify：向单个用户多渠道分发
+    - notify：向单个用户多渠道分发，并写入站内消息表
     - notify_both：向双方分发（如学员+教练）
     """
 
-    def __init__(self) -> None:
+    def __init__(self, store: Any | None = None) -> None:
         self._channels: dict[str, NotificationChannel] = {}
         self._templates: dict[str, dict[str, Any]] = {}
+        self._store = store
 
     def register_channel(self, name: str, channel: NotificationChannel | Callable) -> None:
         """注册渠道。channel 可为 NotificationChannel 实例或同步函数。"""
@@ -48,6 +52,12 @@ class NotificationCenter:
             channels=list(channels),
             params=dict(params),
         )
+        # 站内消息留痕：落库失败不阻断业务主流程
+        if self._store is not None:
+            try:
+                self._store.save(notification)
+            except Exception as e:  # pragma: no cover - 依赖外部存储异常
+                logger.warning("[NOTIFY] 站内消息落库失败: %s", e)
         for ch_name in channels:
             channel = self._channels.get(ch_name)
             if channel is None:

@@ -143,3 +143,14 @@ def test_sms_channel_uses_production_when_configured():
 
     channel = server.notification_center._channels["SMS"]
     assert channel._production is True
+
+def test_notification_center_uses_injected_repository():
+    """通知中心应使用 server 注入的仓储做站内消息留痕。"""
+    from umcp_core.server import UMCPServer
+    from plugins.escort_driving import register_plugin
+
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    register_plugin(server)
+
+    assert server.notification_center._store is server.notification_repo

@@ -9,6 +9,7 @@ from umcp_core.transport.routers.friends import router as friends_router
 from umcp_core.transport.routers.health import router as health_router
 from umcp_core.transport.routers.lbs import router as lbs_router
 from umcp_core.transport.routers.matches import router as matches_router
+from umcp_core.transport.routers.notifications import router as notifications_router
 from umcp_core.transport.routers.resources import router as resources_router
 from umcp_core.transport.routers.tasks import router as tasks_router
 from umcp_core.transport.routers.trust import router as trust_router
@@ -36,3 +37,5 @@ def register_routers(app) -> None:
     app.include_router(friends_router)
     # LBS 位置服务 router（prefix 已内置于 router）
     app.include_router(lbs_router)
+    # 站内通知 router（prefix 已内置于 router）
+    app.include_router(notifications_router)

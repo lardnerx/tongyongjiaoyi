@@ -18,6 +18,11 @@ from umcp_core.shared.rules.models import (  # noqa: F401  导入以注册建表
     BusinessRuleHistoryModel,
     BusinessRuleModel,
 )
+from umcp_core.shared.notification.repository import (  # noqa: F401  导入以注册建表元数据
+    NotificationModel,
+    NotificationTemplateModel,
+    PostgresNotificationRepository,
+)
 from umcp_core.shared.rules.repository import PostgresRuleRepository
 from umcp_core.shared.payment.repository import PostgresPaymentRepository
 
@@ -60,6 +65,7 @@ class PostgresRepositoryBundle:
         self.event_repo = PostgresEventRepository(self.SessionFactory)
         self.rule_repo = PostgresRuleRepository(self.SessionFactory)
         self.payment_repo = PostgresPaymentRepository(self.SessionFactory)
+        self.notification_repo = PostgresNotificationRepository(self.SessionFactory)
 
     @contextmanager
     def transaction(self) -> Session:

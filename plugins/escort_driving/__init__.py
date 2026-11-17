@@ -137,9 +137,11 @@ def _setup_notification_center(server: "UMCPServer") -> None:
     from umcp_core.shared.notification.center import NotificationCenter
     from umcp_core.shared.notification.ws_channel import WSNotificationChannel
 
-    # 1. 创建通知中心
-    center = NotificationCenter()
+    # 1. 创建通知中心（站内消息落库用 server 注入的仓储）
+    notify_repo = getattr(server, "notification_repo", None)
+    center = NotificationCenter(store=notify_repo)
     server.notification_center = center
+    logger.info("[NOTIFY] 站内消息仓储: %s", type(notify_repo).__name__ if notify_repo else "未注册")
 
     # 2. 注册 WS 推送渠道
     from umcp_core.transport.ws import ConnectionManager

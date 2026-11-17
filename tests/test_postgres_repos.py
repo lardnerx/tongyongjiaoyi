@@ -687,3 +687,43 @@ class TestPostgresRuleRepository:
         found = new_repo.find_by_key("payment.timeout_seconds")
         assert found is not None
         assert found["rule_value"] == 1800
+
+class TestPostgresNotificationRepository:
+    def test_save_list_and_mark_read(self, pg_bundle):
+        """站内消息应落库、按用户隔离、可标记已读。"""
+        from umcp_core.shared.notification.base import Notification
+
+        repo = pg_bundle.notification_repo
+        first_id = repo.save(
+            Notification(user_id="u1", event_type="DEAL_CREATED", title="t1", body="b1")
+        )
+        repo.save(
+            Notification(user_id="u1", event_type="DEAL_PAID", title="t2", body="b2")
+        )
+        repo.save(Notification(user_id="u2", event_type="DEAL_CREATED", title="t3", body="b3"))
+
+        rows = repo.list_by_user("u1")
+        assert [r["title"] for r in rows] == ["t2", "t1"]
+        assert repo.count_unread("u1") == 2
+        assert repo.list_by_user("u2")[0]["title"] == "t3"
+
+        assert repo.mark_read("u1", first_id) is True
+        assert repo.mark_read("u2", first_id) is False
+        assert repo.count_unread("u1") == 1
+        assert repo.mark_all_read("u1") == 1
+        assert repo.count_unread("u1") == 0
+        assert repo.list_by_user("u1", unread_only=True) == []
+
+    def test_message_survives_new_repository_instance(self, pg_bundle):
+        """模拟重启：新仓储实例仍可读到历史消息。"""
+        from umcp_core.shared.notification.base import Notification
+        from umcp_core.shared.notification.repository import PostgresNotificationRepository
+
+        pg_bundle.notification_repo.save(
+            Notification(user_id="u1", event_type="DEAL_CREATED", title="重启前", body="b")
+        )
+
+        new_repo = PostgresNotificationRepository(pg_bundle.SessionFactory)
+        rows = new_repo.list_by_user("u1")
+        assert len(rows) == 1
+        assert rows[0]["title"] == "重启前"
