@@ -80,3 +80,33 @@ def test_payment_service_uses_event_bus(server_with_escort):
 
     types = [e.type.value for e in received]
     assert "payment.paid" in types
+
+
+def test_payment_service_uses_wechat_gateway_when_configured(monkeypatch):
+    """配置了完整微信参数时，register_plugin 应选择 WechatPayGateway。"""
+    from umcp_core.server import UMCPServer
+    from plugins.escort_driving import register_plugin
+    import umcp_core.shared.payment.wechat as wechat_module
+
+    captured: dict[str, object] = {}
+
+    class FakeWechatPayGateway:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(wechat_module, "WechatPayGateway", FakeWechatPayGateway)
+
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    server.payment_gateway_config = {
+        "app_id": "wx_test_app",
+        "mch_id": "1900000000",
+        "api_v3_key": "k" * 32,
+        "mch_serial_no": "SERIAL",
+        "private_key_path": "/tmp/apiclient_key.pem",
+        "notify_url": "https://example.com/api/v1/escort/payments/callback",
+    }
+    register_plugin(server)
+
+    assert captured["app_id"] == "wx_test_app"
+    assert isinstance(server.payment_service._gateway, FakeWechatPayGateway)

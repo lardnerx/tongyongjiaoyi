@@ -74,17 +74,8 @@ def main() -> None:
     else:
         server.use_in_memory_repositories()
 
-    # 加载插件（按 UMCP_PLUGINS 逗号分隔顺序）
-    plugins_env = os.environ.get("UMCP_PLUGINS", "").strip()
-    if plugins_env:
-        for name in [p.strip() for p in plugins_env.split(",") if p.strip()]:
-            try:
-                server.load_plugin(name)
-                print(f"[UMCP] 已加载插件: {name}", file=sys.stderr)
-            except Exception as e:
-                print(f"[UMCP] 加载插件 {name} 失败: {e}", file=sys.stderr)
-
-    # 传入支付网关配置 + 短信通知配置（供插件 register_plugin 读取）
+    # 传入支付网关配置 + 短信通知配置
+    # 注意：必须在加载插件之前赋值，插件 register_plugin 会立即读取该配置
     payment_gw_config: dict[str, str] = {}
     if config.has_wechat_config:
         payment_gw_config.update(
@@ -112,6 +103,16 @@ def main() -> None:
         sms_template_code=config.sms_template_code,
     )
     server.payment_gateway_config = payment_gw_config
+
+    # 加载插件（按 UMCP_PLUGINS 逗号分隔顺序）
+    plugins_env = os.environ.get("UMCP_PLUGINS", "").strip()
+    if plugins_env:
+        for name in [p.strip() for p in plugins_env.split(",") if p.strip()]:
+            try:
+                server.load_plugin(name)
+                print(f"[UMCP] 已加载插件: {name}", file=sys.stderr)
+            except Exception as e:
+                print(f"[UMCP] 加载插件 {name} 失败: {e}", file=sys.stderr)
 
     # 短信配置校验
     if config.sms_api_id:
