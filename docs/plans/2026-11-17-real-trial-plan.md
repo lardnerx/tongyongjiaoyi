@@ -72,6 +72,7 @@
   - `InMemoryNotificationRepository` / `PostgresNotificationRepository` 双实现，启动时自动建表
   - 新增接口：`GET /api/v1/notifications`、`GET /api/v1/notifications/unread-count`、`POST /api/v1/notifications/{id}/read`、`POST /api/v1/notifications/read-all`
   - 生产验证通过（2026-11-17，commit `b0e72b6`）：日志 `站内消息仓储: PostgresNotificationRepository`；写入 1 条后列表 `total_unread=1`，标记已读后未读数归 0，`notifications.read_at` 已更新
+  - 业务通知渠道由「WS + SMS」改为「WS + 站内」（`_NOTIFY_CHANNELS = ["IN_APP", "WS_PUSH"]`）；SMS 渠道保留但仅用于后续验证码等场景
 - [~] 4.3 监控告警（可用性、5xx、DB 连接数、磁盘、备份失败）
   - 已提供 `deploy/healthwatch.sh` + `umcp-healthwatch.service` + `umcp-healthwatch.timer`（每分钟巡检，仅写本地日志，状态变化才记录）
   - 待生产安装并验证：`bash -n`、手动 `-v` 跑一次、`systemctl list-timers`

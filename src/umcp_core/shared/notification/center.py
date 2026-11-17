@@ -52,7 +52,7 @@ class NotificationCenter:
             channels=list(channels),
             params=dict(params),
         )
-        # 站内消息留痕：落库失败不阻断业务主流程
+        # 站内消息留痕（即 IN_APP 渠道的实现）：落库失败不阻断业务主流程
         if self._store is not None:
             try:
                 self._store.save(notification)

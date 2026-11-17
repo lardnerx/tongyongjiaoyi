@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
+# 业务通知渠道：站内消息（由 NotificationCenter 落库）+ WebSocket 实时推送。
+# 短信仅保留渠道实现供后续验证码等场景使用，业务通知不再走短信。
+_NOTIFY_CHANNELS = ["IN_APP", "WS_PUSH"]
+
 if TYPE_CHECKING:
     from umcp_core.server import UMCPServer
 
@@ -208,7 +212,11 @@ def _setup_sms_channel(server: "UMCPServer", center: "NotificationCenter") -> No
 
     center.register_channel("SMS", sms_channel)
     mode = "production" if sms_channel._production else "console(dev)"
-    logger.info("[NOTIFY] SMS 通知渠道已注册: provider=%s mode=%s", provider, mode)
+    logger.info(
+        "[NOTIFY] SMS 渠道已注册（业务通知已改为站内消息，仅保留供验证码等场景）: provider=%s mode=%s",
+        provider,
+        mode,
+    )
 
 
 def _make_phone_resolver(server: "UMCPServer"):
@@ -306,7 +314,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
 
     event_bus = server.event_bus
 
-    # ── DEAL_CREATED → 通知教练（WS + SMS） ──
+    # ── DEAL_CREATED → 通知教练（站内 + WS） ──
     def on_deal_created(event: Event) -> None:
         payload = event.payload or {}
         supplier_id = payload.get("supplier_id", "")
@@ -315,7 +323,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
         center.notify(
             user_id=supplier_id,
             event_type="DEAL_CREATED",
-            channels=["WS_PUSH", "SMS"],
+            channels=_NOTIFY_CHANNELS,
             params={
                 "deal_id": payload.get("deal_id", ""),
                 "demander_name": payload.get("demander_id", "学员"),
@@ -324,7 +332,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
 
     event_bus.subscribe(EventType.DEAL_CREATED, on_deal_created)
 
-    # ── DEAL_PAID (deal.activate) → 通知学员（WS + SMS） ──
+    # ── DEAL_PAID (deal.activate) → 通知学员（站内 + WS） ──
     def on_deal_paid(event: Event) -> None:
         payload = event.payload or {}
         demander_id = payload.get("demander_id", "")
@@ -333,7 +341,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
         center.notify(
             user_id=demander_id,
             event_type="DEAL_CONFIRMED",
-            channels=["WS_PUSH", "SMS"],
+            channels=_NOTIFY_CHANNELS,
             params={
                 "deal_id": payload.get("deal_id", ""),
                 "coach_name": payload.get("supplier_id", "教练"),
@@ -342,7 +350,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
 
     event_bus.subscribe(EventType.DEAL_PAID, on_deal_paid)
 
-    # ── DEAL_CANCELLED → 通知双方（WS + SMS） ──
+    # ── DEAL_CANCELLED → 通知双方（站内 + WS） ──
     def on_deal_cancelled(event: Event) -> None:
         payload = event.payload or {}
         demander_id = payload.get("demander_id", "")
@@ -352,13 +360,13 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
                 center.notify(
                     user_id=user_id,
                     event_type="DEAL_CANCELLED",
-                    channels=["WS_PUSH", "SMS"],
+                    channels=_NOTIFY_CHANNELS,
                     params={"deal_id": payload.get("deal_id", "")},
                 )
 
     event_bus.subscribe(EventType.DEAL_CANCELLED, on_deal_cancelled)
 
-    # ── PAYMENT_PAID → 通知学员（WS + SMS） ──
+    # ── PAYMENT_PAID → 通知学员（站内 + WS） ──
     def on_payment_paid(event: Event) -> None:
         payload = event.payload or {}
         user_id = payload.get("user_id", "")
@@ -369,7 +377,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
         center.notify(
             user_id=user_id,
             event_type="PAYMENT_PAID",
-            channels=["WS_PUSH", "SMS"],
+            channels=_NOTIFY_CHANNELS,
             params={
                 "deal_id": payload.get("deal_id", ""),
                 "amount": payload.get("amount", 0),
@@ -378,7 +386,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
 
     event_bus.subscribe(EventType.PAYMENT_PAID, on_payment_paid)
 
-    # ── PAYMENT_REFUNDED → 通知学员（WS + SMS） ──
+    # ── PAYMENT_REFUNDED → 通知学员（站内 + WS） ──
     def on_payment_refunded(event: Event) -> None:
         payload = event.payload or {}
         user_id = payload.get("user_id", "")
@@ -397,7 +405,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
         center.notify(
             user_id=user_id,
             event_type="PAYMENT_REFUNDED",
-            channels=["WS_PUSH", "SMS"],
+            channels=_NOTIFY_CHANNELS,
             params={
                 "deal_id": payload.get("deal_id", ""),
                 "refund_amount": payload.get("refund_amount", 0),
@@ -406,7 +414,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
 
     event_bus.subscribe(EventType.PAYMENT_REFUNDED, on_payment_refunded)
 
-    # ── DEAL_COMPLETED → 通知双方（WS + SMS） ──
+    # ── DEAL_COMPLETED → 通知双方（站内 + WS） ──
     def on_deal_completed(event: Event) -> None:
         payload = event.payload or {}
         demander_id = payload.get("demander_id", "")
@@ -416,7 +424,7 @@ def _register_event_listeners(server: "UMCPServer", center: "NotificationCenter"
                 center.notify(
                     user_id=user_id,
                     event_type="DEAL_COMPLETED",
-                    channels=["WS_PUSH", "SMS"],
+                    channels=_NOTIFY_CHANNELS,
                     params={"deal_id": payload.get("deal_id", "")},
                 )
 

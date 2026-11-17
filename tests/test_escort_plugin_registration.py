@@ -154,3 +154,11 @@ def test_notification_center_uses_injected_repository():
     register_plugin(server)
 
     assert server.notification_center._store is server.notification_repo
+
+def test_business_notifications_use_in_app_not_sms():
+    """业务通知应走站内消息 + WS，不再发短信。"""
+    from plugins.escort_driving import _NOTIFY_CHANNELS
+
+    assert "IN_APP" in _NOTIFY_CHANNELS
+    assert "WS_PUSH" in _NOTIFY_CHANNELS
+    assert "SMS" not in _NOTIFY_CHANNELS
