@@ -5,5 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+Environment=BACKUP_DIR=/var/backups/umcp
+Environment=BACKUP_MAX_AGE_HOURS=26
 ExecStart=/opt/umcp/deploy/healthwatch.sh
 Nice=10

@@ -1,0 +1,11 @@
+[Unit]
+Description=UMCP 每日备份（03:30）
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=umcp-backup.service
+
+[Install]
+WantedBy=timers.target

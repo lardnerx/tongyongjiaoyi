@@ -78,16 +78,16 @@
   - 生产验证通过（2026-11-17，commit `1a1ffb2`/`08a8f02`）：`-v` 五项全 ok（db 连接数 2、磁盘 25%）；`list-timers` 每分钟按时触发；模拟故障输出 `[ALERT] backend 异常: HTTP 000`；状态文件落在 `/run/umcp-healthwatch/`
   - 首次 `enable --now` 时出现一次 `203/EXEC`，12:32 起恢复正常，判定为首次拉起竞态，无需处理
   - 备份检查暂未启用（`BACKUP_DIR` 为空自动跳过），4.4 完成后填入
-- [ ] 4.4 备份异地副本（COS/OSS）
+- [~] 4.4 备份异地副本（COS/OSS）
+  - 决策（2026-11-17）：先只做本地备份，异地副本待对象存储开通后再接
   - 备份对象：PostgreSQL 全库（`umcp`）+ `/opt/umcp/.env` + `/opt/umcp/certs/`
-  - 步骤：
-    1. `deploy/backup.sh`：`pg_dump -Fc` 输出到 `/var/backups/umcp/umcp_YYYYmmdd_HHMM.dump`，用 `pg_restore --list` 自检，本地保留 14 天
-    2. `rclone` 上传到**私有** COS bucket 的 `umcp/db/` 目录，异地保留 30 天；`.env` 与 `certs/` 打包为 `umcp_secrets_YYYYmmdd.tar.gz`（权限 600）一同上传
-    3. `umcp-backup.service` + `umcp-backup.timer`：`OnCalendar=*-*-* 03:30:00`、`Persistent=true`
-    4. 失败处理：写 `/var/log/umcp/healthwatch.log`；成功则 `touch /var/backups/umcp/.last_success`
-    5. 与 4.3 联动：备份 service 设置 `BACKUP_DIR=/var/backups/umcp`、`BACKUP_MAX_AGE_HOURS=26`，使"备份过期/为空"自动告警
+  - 已实现：
+    1. `deploy/backup.sh`：`pg_dump -Fc` 输出 `/var/backups/umcp/umcp_YYYYmmdd_HHMM.dump`，`pg_restore --list` 自检，`.env`+`certs` 打包为 600 权限 tar.gz，本地保留 14 天
+    2. `umcp-backup.service` + `umcp-backup.timer`：每日 03:30（`Persistent=true` 补跑错过的执行）
+    3. 成功 `touch /var/backups/umcp/.last_success`，失败写 `/var/log/umcp/healthwatch.log`
+    4. 4.3 联动：`umcp-healthwatch.service` 设 `BACKUP_DIR=/var/backups/umcp`、`BACKUP_MAX_AGE_HOURS=26`，超期自动 ALERT
+  - 待接入（异地）：rclone 上传私有 COS `umcp/db/`，保留 30 天
   - 恢复演练（验收项 6）：取最新 dump → 创建 `umcp_restore_test` → `pg_restore` → 抽查 `users`/`deals`/`notifications` 行数 → 删除测试库
-  - 待确认：COS bucket/region、SecretId/SecretKey（或已配置好的 rclone remote）
 - [ ] 4.5 发布通道固化（`/opt/umcp/sync.sh` 已可用，补 commit 记录表）
 
 ## 五、P1 阶段 5：合规与运营

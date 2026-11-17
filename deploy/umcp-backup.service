@@ -1,0 +1,10 @@
+[Unit]
+Description=UMCP 每日备份（PostgreSQL + 配置/证书）
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/umcp/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle
