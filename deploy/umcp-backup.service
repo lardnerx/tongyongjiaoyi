@@ -5,6 +5,6 @@ Wants=postgresql.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/umcp/deploy/backup.sh
+ExecStart=/bin/bash /opt/umcp/deploy/backup.sh
 Nice=10
 IOSchedulingClass=idle
