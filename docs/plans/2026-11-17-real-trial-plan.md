@@ -73,10 +73,21 @@
   - 新增接口：`GET /api/v1/notifications`、`GET /api/v1/notifications/unread-count`、`POST /api/v1/notifications/{id}/read`、`POST /api/v1/notifications/read-all`
   - 生产验证通过（2026-11-17，commit `b0e72b6`）：日志 `站内消息仓储: PostgresNotificationRepository`；写入 1 条后列表 `total_unread=1`，标记已读后未读数归 0，`notifications.read_at` 已更新
   - 业务通知渠道由「WS + SMS」改为「WS + 站内」（`_NOTIFY_CHANNELS = ["IN_APP", "WS_PUSH"]`）；SMS 渠道保留但仅用于后续验证码等场景
-- [~] 4.3 监控告警（可用性、5xx、DB 连接数、磁盘、备份失败）
+- [x] 4.3 监控告警（可用性、5xx、DB 连接数、磁盘、备份失败）
   - 已提供 `deploy/healthwatch.sh` + `umcp-healthwatch.service` + `umcp-healthwatch.timer`（每分钟巡检，仅写本地日志，状态变化才记录）
-  - 待生产安装并验证：`bash -n`、手动 `-v` 跑一次、`systemctl list-timers`
+  - 生产验证通过（2026-11-17，commit `1a1ffb2`/`08a8f02`）：`-v` 五项全 ok（db 连接数 2、磁盘 25%）；`list-timers` 每分钟按时触发；模拟故障输出 `[ALERT] backend 异常: HTTP 000`；状态文件落在 `/run/umcp-healthwatch/`
+  - 首次 `enable --now` 时出现一次 `203/EXEC`，12:32 起恢复正常，判定为首次拉起竞态，无需处理
+  - 备份检查暂未启用（`BACKUP_DIR` 为空自动跳过），4.4 完成后填入
 - [ ] 4.4 备份异地副本（COS/OSS）
+  - 备份对象：PostgreSQL 全库（`umcp`）+ `/opt/umcp/.env` + `/opt/umcp/certs/`
+  - 步骤：
+    1. `deploy/backup.sh`：`pg_dump -Fc` 输出到 `/var/backups/umcp/umcp_YYYYmmdd_HHMM.dump`，用 `pg_restore --list` 自检，本地保留 14 天
+    2. `rclone` 上传到**私有** COS bucket 的 `umcp/db/` 目录，异地保留 30 天；`.env` 与 `certs/` 打包为 `umcp_secrets_YYYYmmdd.tar.gz`（权限 600）一同上传
+    3. `umcp-backup.service` + `umcp-backup.timer`：`OnCalendar=*-*-* 03:30:00`、`Persistent=true`
+    4. 失败处理：写 `/var/log/umcp/healthwatch.log`；成功则 `touch /var/backups/umcp/.last_success`
+    5. 与 4.3 联动：备份 service 设置 `BACKUP_DIR=/var/backups/umcp`、`BACKUP_MAX_AGE_HOURS=26`，使"备份过期/为空"自动告警
+  - 恢复演练（验收项 6）：取最新 dump → 创建 `umcp_restore_test` → `pg_restore` → 抽查 `users`/`deals`/`notifications` 行数 → 删除测试库
+  - 待确认：COS bucket/region、SecretId/SecretKey（或已配置好的 rclone remote）
 - [ ] 4.5 发布通道固化（`/opt/umcp/sync.sh` 已可用，补 commit 记录表）
 
 ## 五、P1 阶段 5：合规与运营
