@@ -64,7 +64,8 @@ report() {
 }
 
 # 1) 后端本地健康接口
-code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$HEALTH_URL_LOCAL" 2>/dev/null || echo "000")
+code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$HEALTH_URL_LOCAL" 2>/dev/null)
+code="${code:-000}"
 if [ "$code" = "200" ]; then
     report backend ok "HTTP 200"
 else
@@ -72,7 +73,8 @@ else
 fi
 
 # 2) 公网健康接口（覆盖 nginx / 证书 / 后端链路）
-code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "$HEALTH_URL_PUBLIC" 2>/dev/null || echo "000")
+code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "$HEALTH_URL_PUBLIC" 2>/dev/null)
+code="${code:-000}"
 if [ "$code" = "200" ]; then
     report public ok "HTTP 200"
 else
