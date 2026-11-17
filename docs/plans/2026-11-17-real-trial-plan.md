@@ -18,12 +18,14 @@
 
 ## 一、P0 阶段 1：真实收款
 
-- [ ] 1.1 配置微信支付真实凭证
-  - `.env`：`WECHAT_APP_ID` / `WECHAT_MCH_ID` / `WECHAT_API_V3_KEY` / `WECHAT_MCH_SERIAL_NO` / `WECHAT_PRIVATE_KEY_PATH`
-  - 商户平台下载 API 证书，私钥落到 `/opt/umcp/certs/` 并 `chmod 600`
-  - 平台证书下载与轮换机制确认（回调验签依赖）
-  - 回调地址保持 `https://jishi100.online/api/v1/escort/payments/callback`
-- [ ] 1.2 支付单落库
+- [~] 1.1 配置微信支付真实凭证（凭证已配置，被 AppID 未认证阻塞）
+  - 已完成：`.env` 5 项 `WECHAT_*` 已配置；私钥已落到 `/opt/umcp/certs/` 并 `chmod 600`；回调地址 `https://jishi100.online/api/v1/escort/payments/callback`
+  - 已完成：修复启动顺序 bug（插件在配置注入前注册，导致回退 Mock），commit `1edeb97`
+  - 阻塞 1：商户号未开通 Native 支付（`NO_AUTH`）
+  - 阻塞 2：AppID 未通过微信认证，无法关联商户号（`APPID_MCHID_NOT_MATCH`）
+  - 待办：完成微信认证 → 商户平台关联 AppID → 开通 Native 支付 → 恢复 `WECHAT_APP_ID` 并重启
+  - 当前状态：临时注释 `WECHAT_APP_ID`，回落 Mock 继续联调其余环节
+- [x] 1.2 支付单落库
   - 新增 `payments` 表（与 `InMemoryPaymentRepository` 接口对齐）
   - 新增 `PostgresPaymentRepository`
   - 启动时按是否配置 DSN 注入，与其它仓储保持同一套切换逻辑
