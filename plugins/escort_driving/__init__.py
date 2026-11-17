@@ -164,7 +164,7 @@ def _setup_sms_channel(server: "UMCPServer", center: "NotificationCenter") -> No
     from umcp_core.shared.notification.sms_channel import SmsChannel
 
     # 从 server 配置读取短信参数
-    gateway_config = getattr(server, "payment_gw_config", {})
+    gateway_config = getattr(server, "payment_gateway_config", {})
     # 互亿无线（优先）
     api_id = gateway_config.get("sms_api_id", "")
     api_key = gateway_config.get("sms_api_key", "")

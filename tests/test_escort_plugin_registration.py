@@ -110,3 +110,21 @@ def test_payment_service_uses_wechat_gateway_when_configured(monkeypatch):
 
     assert captured["app_id"] == "wx_test_app"
     assert isinstance(server.payment_service._gateway, FakeWechatPayGateway)
+
+
+def test_sms_channel_uses_production_when_configured():
+    """配置了互亿无线凭证时，短信渠道应进入生产模式。"""
+    from umcp_core.server import UMCPServer
+    from plugins.escort_driving import register_plugin
+
+    server = UMCPServer()
+    server.use_in_memory_repositories()
+    server.payment_gateway_config = {
+        "sms_api_id": "C12345678",
+        "sms_api_key": "test_key",
+        "sms_sign": "达信通",
+    }
+    register_plugin(server)
+
+    channel = server.notification_center._channels["SMS"]
+    assert channel._production is True
