@@ -83,7 +83,7 @@ export default function BookInstantPage() {
           {submitting ? "下单中..." : "立即叫车"}
         </Button>
 
-        <Button variant="ghost" className="w-full" onClick={() => router.push("/dashboard")}>
+        <Button variant="ghost" className="w-full" onClick={() => router.push("/services")}>
           返回
         </Button>
       </div>
