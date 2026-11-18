@@ -107,6 +107,71 @@ export default function ServicesPage() {
         </svg>
       ),
     },
+    {
+      key: "plumbing",
+      name: "即时水电维修",
+      description: "水管、电路、门锁等家庭急修",
+      href: null,
+      icon: (
+        <svg
+          className={iconClass}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M14.7 6.3a4 4 0 0 0 5 5L21 21l-2-.5-9.5-9.5a4 4 0 0 1-5-5L6 4l1.5 1.5" />
+          <path d="M4 4l3 3" />
+        </svg>
+      ),
+    },
+    {
+      key: "pet",
+      name: "即时宠物服务",
+      description: "上门喂养、遛狗、宠物洗护",
+      href: null,
+      icon: (
+        <svg
+          className={iconClass}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <ellipse cx="6" cy="10" rx="2" ry="2.5" />
+          <ellipse cx="18" cy="10" rx="2" ry="2.5" />
+          <ellipse cx="9.5" cy="5.5" rx="1.8" ry="2.2" />
+          <ellipse cx="14.5" cy="5.5" rx="1.8" ry="2.2" />
+          <path d="M12 12c-2.5 0-4.5 2-4.5 4a3 3 0 0 0 4.5 2.6A3 3 0 0 0 16.5 16c0-2-2-4-4.5-4Z" />
+        </svg>
+      ),
+    },
+    {
+      key: "housekeeping",
+      name: "即时家政服务",
+      description: "日常保洁、深度清洁、家电清洗",
+      href: null,
+      icon: (
+        <svg
+          className={iconClass}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M15 3l6 6" />
+          <path d="M13 5l6 6-1.8 1.8a2 2 0 0 1-2.8 0l-3.2-3.2a2 2 0 0 1 0-2.8L13 5Z" />
+          <path d="M12 14l-8 7 1-4 7-8" />
+          <path d="M4 21h6" />
+        </svg>
+      ),
+    },
   ];
 
   const handleLogout = async () => {
