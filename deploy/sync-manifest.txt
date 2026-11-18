@@ -30,6 +30,7 @@ web/src/lib/api-client.ts
 web/src/lib/auth-store.ts
 web/src/components/site-footer.tsx
 web/src/components/avatar-upload.tsx
+web/src/components/amap-picker.tsx
 web/src/app/(auth)/login/page.tsx
 web/src/app/(auth)/register/page.tsx
 web/src/app/(auth)/reset-password/page.tsx

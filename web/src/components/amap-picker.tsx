@@ -21,11 +21,16 @@ function loadAmapSDK(): Promise<void> {
   sdkLoaded = new Promise((resolve, reject) => {
     const key = process.env.NEXT_PUBLIC_AMAP_KEY || "";
     const securityCode = process.env.NEXT_PUBLIC_AMAP_SECURITY_CODE || "";
+    if (!key) {
+      reject(new Error("未配置高德地图 Key"));
+      return;
+    }
     if (securityCode) {
       window._AMapSecurityConfig = { securityJsCode: securityCode };
     }
     const script = document.createElement("script");
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`;
+    // v2.0 的 Geocoder 是异步插件，必须显式加载，否则点击地图后逆地理编码不会执行
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Geocoder`;
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("高德地图 SDK 加载失败"));
@@ -67,8 +72,19 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
               map: mapInstance.current,
             });
           }
-          // 逆地理编码
-          const geocoder = new AMap.Geocoder();
+          // 逆地理编码（失败时回落为经纬度，保证一定能选到位置）
+          let geocoder: any = null;
+          try {
+            geocoder = new AMap.Geocoder();
+          } catch {
+            geocoder = null;
+          }
+          if (!geocoder) {
+            const fallback = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            setAddress(fallback);
+            onChange({ lat, lng, address: fallback });
+            return;
+          }
           geocoder.getAddress([lng, lat], (status: string, result: any) => {
             if (status === "complete" && result.info === "OK") {
               const addr = result.regeocode.formattedAddress;
@@ -107,15 +123,18 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
   return (
     <div className="space-y-2">
       {!sdkFailed && (
-        <div
-          ref={mapRef}
-          className="w-full h-64 rounded-lg border border-gray-300"
-          data-testid="amap-container"
-        />
+        <>
+          <div
+            ref={mapRef}
+            className="w-full h-64 rounded-lg border border-gray-300"
+            data-testid="amap-container"
+          />
+          <p className="text-xs text-gray-500">点击地图选择上车地点</p>
+        </>
       )}
       {sdkFailed && (
         <div className="w-full h-64 rounded-lg border border-gray-300 bg-gray-50 flex flex-col items-center justify-center space-y-3 p-4" data-testid="amap-fallback">
-          <p className="text-sm text-gray-500 text-center">地图加载失败，请手动输入坐标</p>
+          <p className="text-sm text-gray-500 text-center">地图未配置或加载失败，请手动输入坐标</p>
           <div className="flex gap-2 w-full">
             <input
               type="text"
