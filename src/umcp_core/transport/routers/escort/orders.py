@@ -77,10 +77,23 @@ class ScheduledOrderInfo(BaseModel):
     candidates: list[str]
 
 
+def _order_type_of(task: EscortTask) -> str:
+    """取订单类型。
+
+    仓储往返后插件任务会被还原为 StandardTask，此时 order_type 只存在于
+    structured_fields 中（历史数据两者都没有，按实时单兜底）。
+    """
+    return (
+        getattr(task, "order_type", None)
+        or task.structured_fields.get("order_type")
+        or "REALTIME"
+    )
+
+
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
     return OrderInfo(
         task_id=task.task_id,
-        order_type=task.order_type,
+        order_type=_order_type_of(task),
         status=task.status,
         demander_id=task.demander_id,
         car_type=task.structured_fields.get("car_type", ""),
@@ -229,7 +242,7 @@ async def get_order(
         raise NotFoundError(message=f"订单 {task_id} 不存在")
     info = _task_to_order_info(task)
     # 预约单反查 deal_id
-    if task.order_type == "SCHEDULED":
+    if _order_type_of(task) == "SCHEDULED":
         deals = server.deal_repo.find_by_task(task_id)
         if deals:
             info.deal_id = deals[-1].deal_id  # 取最新 deal
@@ -257,8 +270,8 @@ async def cancel_order(
     penalty = 0.0
 
     # 预约单：计算罚分并扣除信用分
-    if task.order_type == "SCHEDULED":
-        scheduled_at = task.scheduled_at
+    if _order_type_of(task) == "SCHEDULED":
+        scheduled_at = getattr(task, "scheduled_at", None)
         penalty = _calculate_scheduled_penalty(rule_config, scheduled_at)
         if penalty > 0:
             engine = server.trust_engine_for(task.domain_tag.value)
@@ -276,7 +289,7 @@ async def cancel_order(
     server.task_repo.save(task)
 
     # 预约单：取消 deal 并退款
-    if task.order_type == "SCHEDULED":
+    if _order_type_of(task) == "SCHEDULED":
         deals = server.deal_repo.find_by_task(task_id)
         payment_service = getattr(server, "payment_service", None)
         for deal in deals:
@@ -477,7 +490,7 @@ async def select_coach(
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
-    if task.order_type != "SCHEDULED":
+    if _order_type_of(task) != "SCHEDULED":
         raise IllegalStateError(message="仅预约单支持选教练")
     if task.status != TaskStatus.DRAFT:
         raise IllegalStateError(message=f"订单状态 {task.status} 不允许选教练")

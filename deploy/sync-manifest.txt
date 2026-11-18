@@ -21,6 +21,7 @@ src/umcp_core/transport/__main__.py
 src/umcp_core/transport/config.py
 src/umcp_core/transport/routers/auth.py
 src/umcp_core/transport/routers/notifications.py
+src/umcp_core/transport/routers/escort/orders.py
 src/umcp_core/transport/routers/__init__.py
 src/umcp_core/transport/routers/admin/rules.py
 plugins/escort_driving/__init__.py

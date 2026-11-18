@@ -31,6 +31,10 @@ _TASK_TYPE_REGISTRY: dict[str, type[Task]] = {
     "composite": CompositeTask,
 }
 
+# TaskModel 没有结构化字段列，插件任务（如 escort）的 structured_fields
+# 以该保留键随 custom_fields（JSONB）一起持久化，避免往返丢失
+_STRUCTURED_FIELDS_KEY = "__structured_fields__"
+
 
 # ------------------------------------------------------------------
 # Task 转换器
@@ -40,6 +44,10 @@ _TASK_TYPE_REGISTRY: dict[str, type[Task]] = {
 def task_to_orm(task: Task) -> TaskModel:
     """领域 Task → ORM TaskModel。"""
     parent_task_id = getattr(task, "parent_task_id", None)
+    custom_fields = dict(task.custom_fields)
+    structured_fields = getattr(task, "structured_fields", None)
+    if structured_fields:
+        custom_fields[_STRUCTURED_FIELDS_KEY] = structured_fields
     return TaskModel(
         task_id=task.task_id,
         task_type=task.task_type(),
@@ -51,7 +59,7 @@ def task_to_orm(task: Task) -> TaskModel:
         supplier_id=getattr(task, "supplier_id", None),
         assigned_resource_id=task.assigned_resource_id,
         parent_task_id=parent_task_id,
-        custom_fields=task.custom_fields,
+        custom_fields=custom_fields,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -73,7 +81,26 @@ def task_from_orm(model: TaskModel) -> Task:
     task.task_id = model.task_id
     task.status = model.status
     task.assigned_resource_id = model.assigned_resource_id
-    task.custom_fields = model.custom_fields or {}
+
+    custom_fields = dict(model.custom_fields or {})
+    structured_fields = custom_fields.pop(_STRUCTURED_FIELDS_KEY, None) or {}
+    task.custom_fields = custom_fields
+    if isinstance(task, StandardTask):
+        task.structured_fields = structured_fields
+
+    # 插件自定义任务（如 escort）在通用仓储中按 StandardTask 还原，
+    # 补齐插件扩展属性，否则读取 order_type / scheduled_at 等字段会抛 AttributeError
+    if model.task_type not in _TASK_TYPE_REGISTRY:
+        if structured_fields.get("order_type"):
+            task.order_type = structured_fields["order_type"]
+        if structured_fields.get("coach_level_pref"):
+            task.coach_level_pref = structured_fields["coach_level_pref"]
+        if structured_fields.get("scheduled_at"):
+            try:
+                task.scheduled_at = datetime.fromisoformat(structured_fields["scheduled_at"])
+            except (TypeError, ValueError):
+                task.scheduled_at = None
+
     task.created_at = model.created_at
     task.updated_at = model.updated_at
     return task

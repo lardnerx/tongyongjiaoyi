@@ -88,6 +88,34 @@ class TestTaskConverter:
         assert isinstance(restored, CustomTask)
         assert restored.task_type() == "custom"
 
+    def test_plugin_task_roundtrip_keeps_structured_fields(self):
+        """插件任务（escort）往返应保留结构化字段与扩展属性。"""
+        from datetime import datetime as dt
+
+        from plugins.escort_driving.tasks import EscortTask
+
+        task = EscortTask(
+            demander_id="user-1",
+            origin_lat=39.9042,
+            origin_lng=116.4074,
+            car_type="manual",
+            required_skills=["coach_license"],
+            duration_hours=2,
+            order_type="SCHEDULED",
+            scheduled_at=dt(2026, 8, 15, 10, 0, 0),
+        )
+        task.custom_fields["actual_hours"] = 2
+
+        restored = task_from_orm(task_to_orm(task))
+
+        assert restored.structured_fields["car_type"] == "manual"
+        assert restored.structured_fields["duration_hours"] == 2
+        assert restored.order_type == "SCHEDULED"
+        assert restored.coach_level_pref == "ANY"
+        assert restored.scheduled_at == dt(2026, 8, 15, 10, 0, 0)
+        # 保留键不应泄漏到 custom_fields
+        assert restored.custom_fields == {"actual_hours": 2}
+
     def test_composite_task_roundtrip(self):
         """CompositeTask 重建需额外传入 dependencies 和 subtasks。"""
         sub_a = StandardTask(
