@@ -12,6 +12,22 @@ const ICP_NUMBER = process.env.NEXT_PUBLIC_ICP_NUMBER ?? "粤ICP备2026155792号
 const CONTACT_EMAIL =
   process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "service@jishi100.online";
 
+interface ServiceItem {
+  name: string;
+  description: string;
+  live: boolean;
+}
+
+const SERVICES: ServiceItem[] = [
+  { name: "陪驾", description: "实时呼叫或预约教练，上门陪练", live: true },
+  { name: "应急补胎", description: "道路现场补胎、换胎", live: false },
+  { name: "应急搭电", description: "电瓶亏电快速搭电", live: false },
+  { name: "应急充电", description: "新能源车移动应急充电", live: false },
+  { name: "即时水电维修", description: "水管、电路、门锁等家庭急修", live: false },
+  { name: "即时宠物服务", description: "上门喂养、遛狗、宠物洗护", live: false },
+  { name: "即时家政服务", description: "日常保洁、深度清洁、家电清洗", live: false },
+];
+
 export default function AboutPage() {
   return (
     <div className="space-y-6 text-sm leading-7 text-gray-600">
@@ -31,7 +47,31 @@ export default function AboutPage() {
           即时百分百是由{COMPANY_NAME}运营的在线服务平台。平台以“即时响应、透明交易、双向信任”为目标，为服务需求方与服务提供方提供在线下单、智能匹配、履约确认、在线支付、双向评价与信用记录等全流程服务。
         </p>
         <p>
-          目前平台已上线陪驾服务场景：学员可实时呼叫或预约教练，教练可在线接单，双方通过平台完成订单履约、计时计费、在线支付与互评，全流程留痕，保障交易透明可追溯。
+          目前平台已上线陪驾服务场景：学员可实时呼叫或预约教练，教练可在线接单，双方通过平台完成订单履约、计时计费、在线支付与互评，全流程留痕，保障交易透明可追溯。平台正按同一套服务框架，陆续接入道路应急服务与即时生活服务。
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-gray-900">服务范围</h2>
+        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-gray-50/60 text-xs">
+          {SERVICES.map((service) => (
+            <li key={service.name} className="flex items-center gap-3 px-4 py-3">
+              <span className="w-28 shrink-0 text-gray-700">{service.name}</span>
+              <span className="min-w-0 flex-1 text-gray-500">{service.description}</span>
+              <span
+                className={
+                  service.live
+                    ? "shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-[11px] text-green-600"
+                    : "shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-400"
+                }
+              >
+                {service.live ? "已上线" : "即将上线"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-gray-400">
+          标注“即将上线”的服务正在接入中，上线后可在服务列表中直接使用。
         </p>
       </section>
 
