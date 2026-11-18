@@ -29,8 +29,8 @@ function loadAmapSDK(): Promise<void> {
       window._AMapSecurityConfig = { securityJsCode: securityCode };
     }
     const script = document.createElement("script");
-    // v2.0 的 Geocoder 是异步插件，必须显式加载，否则点击地图后逆地理编码不会执行
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Geocoder`;
+    // v2.0 的 Geocoder / Geolocation 都是异步插件，必须显式加载
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Geocoder,AMap.Geolocation`;
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("高德地图 SDK 加载失败"));
@@ -43,10 +43,39 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [address, setAddress] = useState("");
+  const [hint, setHint] = useState("");
+  const [locating, setLocating] = useState(false);
   const [sdkFailed, setSdkFailed] = useState(false);
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
+
+  const placeMarker = (lat: number, lng: number) => {
+    const AMap = window.AMap;
+    if (!mapInstance.current) return;
+    if (markerRef.current) {
+      markerRef.current.setPosition([lng, lat]);
+    } else {
+      markerRef.current = new AMap.Marker({
+        position: [lng, lat],
+        map: mapInstance.current,
+      });
+    }
+  };
+
+  const applyLocation = (lat: number, lng: number, addr?: string) => {
+    const label = addr || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    placeMarker(lat, lng);
+    if (mapInstance.current) {
+      mapInstance.current.setCenter([lng, lat]);
+      mapInstance.current.setZoom(16);
+    }
+    setAddress(label);
+    setHint("");
+    onChangeRef.current({ lat, lng, address: label });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -64,14 +93,7 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
         mapInstance.current.on("click", (e: any) => {
           const lng = e.lnglat.getLng();
           const lat = e.lnglat.getLat();
-          if (markerRef.current) {
-            markerRef.current.setPosition([lng, lat]);
-          } else {
-            markerRef.current = new AMap.Marker({
-              position: [lng, lat],
-              map: mapInstance.current,
-            });
-          }
+          placeMarker(lat, lng);
           // 逆地理编码（失败时回落为经纬度，保证一定能选到位置）
           let geocoder: any = null;
           try {
@@ -80,19 +102,14 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
             geocoder = null;
           }
           if (!geocoder) {
-            const fallback = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-            setAddress(fallback);
-            onChange({ lat, lng, address: fallback });
+            applyLocation(lat, lng);
             return;
           }
           geocoder.getAddress([lng, lat], (status: string, result: any) => {
             if (status === "complete" && result.info === "OK") {
-              const addr = result.regeocode.formattedAddress;
-              setAddress(addr);
-              onChange({ lat, lng, address: addr });
+              applyLocation(lat, lng, result.regeocode.formattedAddress);
             } else {
-              setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-              onChange({ lat, lng, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+              applyLocation(lat, lng);
             }
           });
         });
@@ -111,6 +128,37 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleLocate = () => {
+    const AMap = window.AMap;
+    if (!AMap) return;
+    setLocating(true);
+    setHint("");
+    try {
+      const geolocation = new AMap.Geolocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        showButton: false,
+        showMarker: false,
+        showCircle: false,
+      });
+      geolocation.getCurrentPosition((status: string, result: any) => {
+        setLocating(false);
+        if (status === "complete" && result.position) {
+          applyLocation(
+            result.position.lat,
+            result.position.lng,
+            result.formattedAddress
+          );
+        } else {
+          setHint("未获取到定位，请点击地图手动选择");
+        }
+      });
+    } catch {
+      setLocating(false);
+      setHint("当前浏览器不支持定位，请点击地图手动选择");
+    }
+  };
+
   const handleManualSubmit = () => {
     const lat = parseFloat(manualLat);
     const lng = parseFloat(manualLng);
@@ -124,12 +172,25 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
     <div className="space-y-2">
       {!sdkFailed && (
         <>
-          <div
-            ref={mapRef}
-            className="w-full h-64 rounded-lg border border-gray-300"
-            data-testid="amap-container"
-          />
-          <p className="text-xs text-gray-500">点击地图选择上车地点</p>
+          <div className="relative">
+            <div
+              ref={mapRef}
+              className="w-full h-64 rounded-lg border border-gray-300"
+              data-testid="amap-container"
+            />
+            <button
+              type="button"
+              onClick={handleLocate}
+              disabled={locating}
+              data-testid="locate-button"
+              className="absolute right-2 top-2 rounded-md bg-white/95 px-3 py-1.5 text-xs font-medium text-gray-700 shadow ring-1 ring-gray-200 disabled:opacity-60"
+            >
+              {locating ? "定位中..." : "定位到我"}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">
+            {hint || "点击地图选择上车地点，或点右上角获取当前位置"}
+          </p>
         </>
       )}
       {sdkFailed && (
