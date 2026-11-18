@@ -17,6 +17,9 @@ export class ApiError extends Error {
 let isRefreshing = false;
 let refreshPromise: Promise<void> | null = null;
 
+// 认证入口自身失败时不能走刷新逻辑，否则真实错误（如密码错误）会被“无 refresh token”覆盖
+const AUTH_ENTRY_PATHS = ["/auth/login", "/auth/register", "/auth/refresh", "/auth/reset-password"];
+
 async function refreshTokens(): Promise<void> {
   const { refreshToken, logout } = useAuthStore.getState();
   if (!refreshToken) {
@@ -59,8 +62,10 @@ async function request<T>(
   const envelope: Envelope<T> | ErrorEnvelope = await resp.json();
 
   // 检查是否 token 过期（code=1002）或签名无效（code=1001，如服务器重启后密钥变更）
-  // 两者都尝试用 refresh_token 自动恢复，避免用户手动重新登录
-  if ("code" in envelope && (envelope.code === 1002 || envelope.code === 1001)) {
+  // 两者都尝试用 refresh_token 自动恢复，避免用户手动重新登录；
+  // 但登录/注册等认证入口的 1001 是业务错误，直接抛出
+  const isAuthEntry = AUTH_ENTRY_PATHS.some((p) => path.startsWith(p));
+  if ("code" in envelope && (envelope.code === 1002 || envelope.code === 1001) && !isAuthEntry) {
     if (retried) {
       throw new ApiError(envelope.code, "刷新后令牌仍被拒绝");
     }

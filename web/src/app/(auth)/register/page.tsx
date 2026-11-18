@@ -58,8 +58,8 @@ export default function RegisterPage() {
       const userInfo = await apiClient.get<UserInfo>("/auth/me");
       setUser(userInfo);
 
-      // 3. 跳转到受保护页面
-      router.push("/dashboard");
+      // 3. 跳转到服务列表
+      router.push("/services");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
     } finally {

@@ -27,9 +27,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 已登录访问登录页 → 跳 Dashboard
+  // 已登录访问登录页 → 跳服务列表
   if (authToken && isPublicPath) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/services", request.url));
   }
 
   // 角色守卫：学员不能访问教练页面，教练不能访问学员页面

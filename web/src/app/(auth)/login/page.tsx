@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, ApiError } from "@/lib/api-client";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,10 +44,15 @@ export default function LoginPage() {
       const userInfo = await apiClient.get<UserInfo>("/auth/me");
       setUser(userInfo);
 
-      // 3. 跳转到受保护页面
-      router.push("/dashboard");
+      // 3. 跳转到服务列表
+      router.push("/services");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
+      // 1001 为无效凭据（手机号未注册或密码错误），统一提示，避免账号枚举
+      if (err instanceof ApiError && err.code === 1001) {
+        setError("手机号或密码错误");
+      } else {
+        setError(err instanceof Error ? err.message : "登录失败");
+      }
     } finally {
       setLoading(false);
     }
