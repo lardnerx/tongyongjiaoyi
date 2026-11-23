@@ -20,7 +20,7 @@ export default function ServicesPage() {
   const { user, activeRole, logout } = useAuthStore();
 
   const escortHref =
-    activeRole === "supplier" ? "/escort/coach" : "/escort/student/book-instant";
+    activeRole === "supplier" ? "/escort/coach" : "/escort/student";
 
   const services: ServiceItem[] = [
     {

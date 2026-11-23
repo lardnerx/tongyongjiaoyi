@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AmapPicker } from "@/components/amap-picker";
+import { EscortOrderFields } from "@/components/escort-order-fields";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import type { OrderInfo } from "@/types/escort";
@@ -55,30 +55,12 @@ export default function BookInstantPage() {
           <AmapPicker onChange={setLocation} />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">车型</label>
-          <select
-            className="w-full rounded-md border border-gray-300 p-2"
-            value={carType}
-            onChange={(e) => setCarType(e.target.value)}
-          >
-            <option value="economy">经济型</option>
-            <option value="professional">专业型</option>
-            <option value="luxury">豪华型</option>
-            <option value="business">商务型</option>
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">服务时长（小时）</label>
-          <Input
-            type="number"
-            min={1}
-            max={8}
-            value={duration}
-            onChange={(e) => setDuration(parseInt(e.target.value) || 1)}
-          />
-        </div>
+        <EscortOrderFields
+          carType={carType}
+          onCarTypeChange={setCarType}
+          duration={duration}
+          onDurationChange={setDuration}
+        />
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -86,7 +68,7 @@ export default function BookInstantPage() {
           {submitting ? "下单中..." : "立即叫车"}
         </Button>
 
-        <Button variant="ghost" className="w-full" onClick={() => router.push("/services")}>
+        <Button variant="ghost" className="w-full" onClick={() => router.push("/escort/student")}>
           返回
         </Button>
       </div>

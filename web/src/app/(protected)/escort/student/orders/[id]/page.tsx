@@ -16,7 +16,7 @@ import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
 import { Button } from "@/components/ui/button";
 import type { OrderStatus } from "@/types/escort";
-import { formatCarType } from "@/types/escort";
+import { formatCarType, formatEstimate, unitPriceOf } from "@/types/escort";
 
 export default function StudentOrderDetailPage() {
   const params = useParams();
@@ -85,10 +85,30 @@ export default function StudentOrderDetailPage() {
             <span className="text-gray-500">时长</span>
             <span>{order.duration_hours}小时</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">单价</span>
+            <span>
+              {unitPriceOf(order.car_type) > 0
+                ? `¥${unitPriceOf(order.car_type)}/小时`
+                : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">预估价格</span>
+            <span className="font-medium">
+              {formatEstimate(order.car_type, order.duration_hours)}
+            </span>
+          </div>
           {isScheduled && order.scheduled_at && (
             <div className="flex justify-between">
               <span className="text-gray-500">预约时间</span>
               <span>{new Date(order.scheduled_at).toLocaleString("zh-CN")}</span>
+            </div>
+          )}
+          {order.created_at && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">下单时间</span>
+              <span>{new Date(order.created_at).toLocaleString("zh-CN")}</span>
             </div>
           )}
           {order.assigned_resource_id && (
@@ -104,6 +124,12 @@ export default function StudentOrderDetailPage() {
             </div>
           )}
         </div>
+
+        {unitPriceOf(order.car_type) > 0 && (
+          <p className="text-xs text-gray-400">
+            预估价格按 {unitPriceOf(order.car_type)} 元/小时 × {order.duration_hours} 小时估算，实际以订单结算为准。
+          </p>
+        )}
 
         {/* 实时单：等待接单 */}
         {!isScheduled && currentStatus === "published" && (

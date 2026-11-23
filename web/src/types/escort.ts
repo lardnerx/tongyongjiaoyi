@@ -15,6 +15,47 @@ export function formatCarType(carType: string | null | undefined): string {
   return CAR_TYPE_LABELS[carType] ?? carType;
 }
 
+/** 各车型暂定单价（元/小时），仅用于前端预估价格展示。 */
+export const CAR_TYPE_UNIT_PRICES: Record<string, number> = {
+  economy: 100,
+  professional: 200,
+  luxury: 500,
+  business: 400,
+};
+
+/** 下单可选车型（含单价）。 */
+export const CAR_TYPE_OPTIONS = [
+  { value: "economy", label: "经济型", price: 100 },
+  { value: "professional", label: "专业型", price: 200 },
+  { value: "luxury", label: "豪华型", price: 500 },
+  { value: "business", label: "商务型", price: 400 },
+];
+
+/** 取车型单价；历史车型（manual/auto）无单价返回 0。 */
+export function unitPriceOf(carType: string | null | undefined): number {
+  if (!carType) return 0;
+  return CAR_TYPE_UNIT_PRICES[carType] ?? 0;
+}
+
+/** 预估价格 = 车型单价 × 时长；无单价的车型返回 null。 */
+export function estimateAmount(
+  carType: string | null | undefined,
+  durationHours: number
+): number | null {
+  const unitPrice = unitPriceOf(carType);
+  if (!unitPrice || !durationHours) return null;
+  return unitPrice * durationHours;
+}
+
+/** 预估价格展示文案；无单价时返回「—」。 */
+export function formatEstimate(
+  carType: string | null | undefined,
+  durationHours: number
+): string {
+  const amount = estimateAmount(carType, durationHours);
+  return amount === null ? "—" : `¥${amount.toFixed(2)}`;
+}
+
 /** 订单状态（后端 TaskStatus 小写字符串）。 */
 export type OrderStatus =
   | "draft"

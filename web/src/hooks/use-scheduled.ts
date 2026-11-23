@@ -17,6 +17,7 @@ export function useCreateScheduledOrder() {
       demander_id: string;
       origin_lat: number;
       origin_lng: number;
+      origin_address?: string;
       car_type: string;
       duration_hours: number;
       scheduled_at: string;
@@ -27,6 +28,7 @@ export function useCreateScheduledOrder() {
         domain_tag: "escort",
         origin_lat: params.origin_lat,
         origin_lng: params.origin_lng,
+        origin_address: params.origin_address,
         car_type: params.car_type,
         required_skills: ["coach_license"],
         duration_hours: params.duration_hours,

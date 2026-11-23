@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AmapPicker } from "@/components/amap-picker";
+import { EscortOrderFields } from "@/components/escort-order-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/lib/auth-store";
@@ -16,7 +17,7 @@ export default function BookScheduledPage() {
   const selectCoach = useSelectCoach();
 
   const [location, setLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [carType, setCarType] = useState("manual");
+  const [carType, setCarType] = useState("economy");
   const [duration, setDuration] = useState(2);
   const [scheduledAt, setScheduledAt] = useState("");
   const [coachLevelPref, setCoachLevelPref] = useState("ANY");
@@ -34,6 +35,7 @@ export default function BookScheduledPage() {
         demander_id: user?.user_id || "",
         origin_lat: location.lat,
         origin_lng: location.lng,
+        origin_address: location.address,
         car_type: carType,
         duration_hours: duration,
         scheduled_at: scheduledAt,
@@ -80,22 +82,17 @@ export default function BookScheduledPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">车型</label>
-              <select
-                className="w-full rounded-md border border-gray-300 p-2"
-                value={carType}
-                onChange={(e) => setCarType(e.target.value)}
-              >
-                <option value="manual">手动挡</option>
-                <option value="auto">自动挡</option>
-              </select>
-            </div>
+            <EscortOrderFields
+              carType={carType}
+              onCarTypeChange={setCarType}
+              duration={duration}
+              onDurationChange={setDuration}
+            />
 
             <div className="space-y-2">
               <label className="text-sm font-medium">教练等级偏好</label>
               <select
-                className="w-full rounded-md border border-gray-300 p-2"
+                className="w-full rounded-md border border-gray-300 bg-white p-2"
                 value={coachLevelPref}
                 onChange={(e) => setCoachLevelPref(e.target.value)}
               >
@@ -104,17 +101,6 @@ export default function BookScheduledPage() {
                 <option value="B">B级</option>
                 <option value="C">C级</option>
               </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">服务时长（小时）</label>
-              <Input
-                type="number"
-                min={1}
-                max={8}
-                value={duration}
-                onChange={(e) => setDuration(parseInt(e.target.value) || 1)}
-              />
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
@@ -127,7 +113,7 @@ export default function BookScheduledPage() {
               {createOrder.isPending ? "提交中..." : "查找教练"}
             </Button>
 
-            <Button variant="ghost" className="w-full" onClick={() => router.push("/dashboard")}>
+            <Button variant="ghost" className="w-full" onClick={() => router.push("/escort/student")}>
               返回
             </Button>
           </>
@@ -161,7 +147,7 @@ export default function BookScheduledPage() {
                 )}
               </div>
             </div>
-            <Button variant="ghost" className="w-full" onClick={() => router.push("/dashboard")}>
+            <Button variant="ghost" className="w-full" onClick={() => router.push("/escort/student")}>
               返回
             </Button>
           </div>
