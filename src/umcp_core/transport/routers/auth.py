@@ -34,6 +34,15 @@ router = APIRouter()
 # 中国大陆手机号：1 开头，第二位 3-9，共 11 位数字
 CN_MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 
+# 注册可选身份：客户（发出订单）/ 司机（接单）
+REGISTER_ROLE_ALIASES = {
+    "demander": "demander",
+    "member": "demander",
+    "customer": "demander",
+    "supplier": "supplier",
+    "driver": "supplier",
+}
+
 
 def _ensure_avatar_dir() -> Path:
     """确保头像存储目录存在并返回。"""
@@ -58,6 +67,8 @@ class RegisterRequest(BaseModel):
     phone: str
     name: str
     password: str = ""
+    # 注册身份：demander（客户/会员）或 supplier（司机）；为空时兼容旧逻辑授予双角色
+    role: str = ""
 
 
 class RefreshRequest(BaseModel):
@@ -111,7 +122,11 @@ async def register(
     phone = req.phone.strip()
     if not CN_MOBILE_PATTERN.fullmatch(phone):
         raise InvalidCredentialError(message="请输入正确的 11 位大陆手机号")
+    role = REGISTER_ROLE_ALIASES.get(req.role.strip().lower(), "")
+    if req.role.strip() and not role:
+        raise InvalidCredentialError(message="注册身份不正确，请选择客户或司机")
     credential = Credential(type="phone", token=phone)
+    credential.payload["role"] = role
     if req.password:
         credential.payload["password"] = req.password
     try:

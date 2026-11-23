@@ -48,6 +48,8 @@ export interface LoginRequest {
 export interface RegisterRequest {
   phone: string;
   name: string;
+  /** 注册身份：demander（客户/会员）或 supplier（司机） */
+  role?: string;
 }
 
 /** 刷新令牌请求。 */

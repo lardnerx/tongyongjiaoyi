@@ -52,7 +52,7 @@ export default function ServicesPage() {
     {
       key: "escort",
       name: "陪驾",
-      description: "实时或预约陪驾，专业教练上门",
+      description: "实时或预约陪驾，专业司机上门",
       href: escortHref,
       icon: (
         <svg

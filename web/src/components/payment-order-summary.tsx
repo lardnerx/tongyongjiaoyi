@@ -27,7 +27,7 @@ export function PaymentOrderSummary({ order, deal, depositAmount }: Props) {
         </div>
         {order.assigned_resource_id && (
           <div className="flex justify-between">
-            <span className="text-gray-500">教练</span>
+            <span className="text-gray-500">司机</span>
             <span className="text-blue-600">{order.assigned_resource_id}</span>
           </div>
         )}

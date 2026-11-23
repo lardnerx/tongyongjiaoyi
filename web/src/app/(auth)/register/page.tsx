@@ -11,9 +11,24 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { SiteFooter } from "@/components/site-footer";
 import type { TokenResponse, UserInfo, RegisterRequest } from "@/types/api";
 
+/** 注册身份选项：客户（会员）发出订单，司机负责接单。 */
+const ROLE_OPTIONS = [
+  {
+    value: "demander",
+    title: "客户（会员）",
+    description: "发布订单，呼叫服务",
+  },
+  {
+    value: "supplier",
+    title: "司机",
+    description: "在线接单，提供服务",
+  },
+] as const;
+
 export default function RegisterPage() {
   const router = useRouter();
   const { setTokens, setUser } = useAuthStore();
+  const [role, setRole] = useState<"" | "demander" | "supplier">("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -31,6 +46,10 @@ export default function RegisterPage() {
     // 中国大陆手机号：1 开头、第二位 3-9、共 11 位
     if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
       setError("请输入正确的 11 位大陆手机号");
+      return;
+    }
+    if (!role) {
+      setError("请选择注册身份（客户或司机）");
       return;
     }
     if (!name) {
@@ -57,6 +76,7 @@ export default function RegisterPage() {
         phone: trimmedPhone,
         name,
         password,
+        role,
       } as RegisterRequest & { password?: string });
       setTokens(tokenResp.access_token, tokenResp.refresh_token);
 
@@ -64,8 +84,8 @@ export default function RegisterPage() {
       const userInfo = await apiClient.get<UserInfo>("/auth/me");
       setUser(userInfo);
 
-      // 3. 跳转到服务列表
-      router.push("/services");
+      // 3. 客户进入服务列表，司机直接进入接单大厅
+      router.push(role === "supplier" ? "/escort/coach" : "/services");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
     } finally {
@@ -80,11 +100,49 @@ export default function RegisterPage() {
         <CardHeader>
           <CardTitle className="text-center text-2xl">注册即时百分百</CardTitle>
           <CardDescription className="text-center">
-            创建账号，开始预约陪驾服务
+            选择身份后创建账号，客户叫单、司机接单
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">注册身份</label>
+              <div className="grid grid-cols-2 gap-3">
+                {ROLE_OPTIONS.map((option) => {
+                  const selected = role === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        setRole(option.value);
+                        setError(null);
+                      }}
+                      disabled={loading}
+                      className={`rounded-lg border p-3 text-left transition-colors ${
+                        selected
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-400"
+                      }`}
+                    >
+                      <div className="text-sm font-medium">{option.title}</div>
+                      <div
+                        className={`mt-1 text-xs ${
+                          selected ? "text-gray-300" : "text-gray-500"
+                        }`}
+                      >
+                        {option.description}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400">
+                注册后身份不可更改，客户负责发出订单，司机负责接单
+              </p>
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">昵称</label>
               <Input

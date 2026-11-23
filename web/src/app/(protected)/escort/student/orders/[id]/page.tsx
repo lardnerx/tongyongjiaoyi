@@ -113,7 +113,7 @@ export default function StudentOrderDetailPage() {
           )}
           {order.assigned_resource_id && (
             <div className="flex justify-between">
-              <span className="text-gray-500">教练</span>
+              <span className="text-gray-500">司机</span>
               <span>{order.assigned_resource_id}</span>
             </div>
           )}
@@ -135,10 +135,10 @@ export default function StudentOrderDetailPage() {
         {!isScheduled && currentStatus === "published" && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2">
             <p className="text-sm font-medium text-yellow-800">
-              订单已发布，正在通知附近教练
+              订单已发布，正在通知附近司机
             </p>
             <p className="text-xs text-yellow-600">
-              教练接单后会立即通知您；若长时间无人接单，可取消订单后重新叫车。
+              司机接单后会立即通知您；若长时间无人接单，可取消订单后重新叫车。
             </p>
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs text-yellow-700">剩余等待时间</span>
@@ -163,7 +163,7 @@ export default function StudentOrderDetailPage() {
         {/* 预约单：已支付，等待教练确认 */}
         {isScheduled && payment?.status === "paid" && deal?.status === "pending" && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center space-y-1">
-            <p className="text-yellow-800">定金已支付，等待教练确认...</p>
+            <p className="text-yellow-800">定金已支付，等待司机确认...</p>
             <p className="text-sm text-yellow-600">
               已付定金：¥{payment?.amount ? payment.amount.toFixed(2) : (deal?.final_amount ? (deal.final_amount * 0.3).toFixed(2) : "0.00")}
             </p>
@@ -173,14 +173,14 @@ export default function StudentOrderDetailPage() {
         {/* 预约单：教练已确认，等待签到 */}
         {isScheduled && deal?.status === "active" && currentStatus === "assigned" && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-            <p className="text-blue-800">教练已确认，等待服务开始...</p>
+            <p className="text-blue-800">司机已确认，等待服务开始...</p>
           </div>
         )}
 
         {/* 预约单：教练拒绝 */}
         {isScheduled && deal?.status === "cancelled" && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-            <p className="text-red-800">教练已拒绝，订单已取消</p>
+            <p className="text-red-800">司机已拒绝，订单已取消</p>
           </div>
         )}
 

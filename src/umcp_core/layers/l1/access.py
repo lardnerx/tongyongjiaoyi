@@ -94,8 +94,14 @@ class PhoneAuthProvider(AuthProvider):
         self._refresh_locks: dict[str, threading.Lock] = {}  # 每个 key 的刷新互斥锁，防止缓存击穿
         self._refresh_locks_lock = threading.Lock()  # 保护 _refresh_locks 的并发访问
 
-    def _build_user(self, phone: str, name: str = "", password: str = "") -> User:
-        """创建带有 Demander + Supplier 角色的用户。"""
+    def _build_user(
+        self, phone: str, name: str = "", password: str = "", role: str = ""
+    ) -> User:
+        """创建用户。
+
+        role 为空时同时授予客户/司机两种角色（兼容旧数据）；
+        指定 role 时只授予该角色（注册时选择的身份）。
+        """
         from umcp_core.core.base import Demander, PermissionSet, Supplier
 
         class _DefaultDemander(Demander):
@@ -123,8 +129,13 @@ class PhoneAuthProvider(AuthProvider):
         if password:
             metadata["password_hash"] = hash_password(password)
         user = _PhoneUser(name=display_name, metadata=metadata)
-        user.add_role(_DefaultDemander())
-        user.add_role(_DefaultSupplier())
+        if role == "demander":
+            user.add_role(_DefaultDemander())
+        elif role == "supplier":
+            user.add_role(_DefaultSupplier())
+        else:
+            user.add_role(_DefaultDemander())
+            user.add_role(_DefaultSupplier())
         return user
 
     def _get_refresh_lock(self, key: str) -> threading.Lock:
@@ -228,19 +239,22 @@ class PhoneAuthProvider(AuthProvider):
         """注册新用户。
 
         Args:
-            credential: 凭据（type="phone", token=手机号, payload 可含 password）
+            credential: 凭据（type="phone", token=手机号, payload 可含 password/role）
             name: 用户昵称/姓名
 
         Returns:
             创建好的 User 对象
 
         Raises:
-            ValueError: 手机号已注册
+            ValueError: 手机号已注册 / 角色非法
         """
         if credential.type != "phone":
             raise ValueError(f"PhoneAuthProvider 不支持凭据类型: {credential.type}")
         phone = credential.token
         password = credential.payload.get("password", "")
+        role = credential.payload.get("role", "")
+        if role and role not in ("demander", "supplier"):
+            raise ValueError(f"不支持的注册身份: {role}")
         if self.strict_auth:
             if not password:
                 raise ValueError("请设置登录密码")
@@ -251,7 +265,7 @@ class PhoneAuthProvider(AuthProvider):
             raise ValueError(f"手机号 {phone} 已注册")
         if self._user_repo and self._user_repo.find_by_phone(phone) is not None:
             raise ValueError(f"手机号 {phone} 已注册")
-        user = self._build_user(phone, name=name, password=password)
+        user = self._build_user(phone, name=name, password=password, role=role)
         self._update_cache(phone, user)
         if self._user_repo:
             self._user_repo.save(user)

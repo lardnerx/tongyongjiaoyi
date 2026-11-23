@@ -25,7 +25,7 @@ export function CancelDialog({
         <h3 className="text-lg font-medium">取消订单</h3>
         <p className="text-sm text-gray-600">
           {orderType === "REALTIME"
-            ? "取消后将通知在线教练。"
+            ? "取消后将通知在线司机。"
             : `取消将扣除信用分 ${penalty} 分，已支付定金将原路退回。`}
         </p>
         {orderType === "SCHEDULED" && penalty > 0 && (

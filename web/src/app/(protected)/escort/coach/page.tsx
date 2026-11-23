@@ -159,7 +159,7 @@ export default function CoachHallPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>时长：{order.duration_hours}小时</span>
-                  <span>学员：{order.demander_id.slice(0, 8)}</span>
+                  <span>客户：{order.demander_id.slice(0, 8)}</span>
                 </div>
                 {order.origin_lat && order.origin_lng && (
                   <p className="text-xs text-gray-400">

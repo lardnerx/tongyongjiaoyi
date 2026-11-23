@@ -37,6 +37,7 @@ export default function DashboardPage() {
     router.push("/login");
   };
 
+  const canBeDemander = user?.roles?.includes("demander");
   const canBeCoach = user?.roles?.includes("supplier");
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
@@ -76,24 +77,28 @@ export default function DashboardPage() {
         </div>
         <h1 className="text-3xl font-bold">欢迎，{user?.name || "用户"}</h1>
         <p className="text-gray-600">用户 ID: {user?.user_id}</p>
-        <p className="text-gray-600">当前角色: {activeRole || "未设置"}</p>
+        <p className="text-gray-600">
+          当前角色: {activeRole === "supplier" ? "司机" : activeRole === "demander" ? "客户（会员）" : "未设置"}
+        </p>
 
         {/* 角色切换 */}
         <div className="flex gap-2 justify-center">
-          <Button
-            variant={activeRole === "demander" ? "default" : "outline"}
-            onClick={() => handleSwitchRole("demander")}
-            disabled={switching}
-          >
-            学员
-          </Button>
+          {canBeDemander && (
+            <Button
+              variant={activeRole === "demander" ? "default" : "outline"}
+              onClick={() => handleSwitchRole("demander")}
+              disabled={switching}
+            >
+              客户（会员）
+            </Button>
+          )}
           {canBeCoach && (
             <Button
               variant={activeRole === "supplier" ? "default" : "outline"}
               onClick={() => handleSwitchRole("supplier")}
               disabled={switching}
             >
-              教练
+              司机
             </Button>
           )}
         </div>

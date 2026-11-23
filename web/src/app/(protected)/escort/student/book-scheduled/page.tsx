@@ -56,7 +56,7 @@ export default function BookScheduledPage() {
         onSuccess: (data: SelectCoachResponse) => {
           router.push(`/escort/student/orders/${data.task_id}`);
         },
-        onError: (e: any) => setError(e.message || "选教练失败"),
+        onError: (e: any) => setError(e.message || "选司机失败"),
       }
     );
   };
@@ -90,7 +90,7 @@ export default function BookScheduledPage() {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">教练等级偏好</label>
+              <label className="text-sm font-medium">司机等级偏好</label>
               <select
                 className="w-full rounded-md border border-gray-300 bg-white p-2"
                 value={coachLevelPref}
@@ -110,7 +110,7 @@ export default function BookScheduledPage() {
               onClick={handleSubmit}
               disabled={createOrder.isPending}
             >
-              {createOrder.isPending ? "提交中..." : "查找教练"}
+              {createOrder.isPending ? "提交中..." : "查找司机"}
             </Button>
 
             <Button variant="ghost" className="w-full" onClick={() => router.push("/escort/student")}>
@@ -122,9 +122,9 @@ export default function BookScheduledPage() {
         {scheduledResp && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg border p-4">
-              <h2 className="font-medium mb-3">推荐教练（Top3）</h2>
+              <h2 className="font-medium mb-3">推荐司机（Top3）</h2>
               <p className="text-sm text-gray-500 mb-3">
-                请选择一位教练，支付定金后等待教练确认。
+                请选择一位司机，支付定金后等待司机确认。
               </p>
               <div className="space-y-2">
                 {scheduledResp.candidates.map((coachId) => (
@@ -143,7 +143,7 @@ export default function BookScheduledPage() {
                   </div>
                 ))}
                 {scheduledResp.candidates.length === 0 && (
-                  <p className="text-sm text-gray-500">暂无匹配教练</p>
+                  <p className="text-sm text-gray-500">暂无匹配司机</p>
                 )}
               </div>
             </div>

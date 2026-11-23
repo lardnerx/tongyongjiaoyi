@@ -117,7 +117,7 @@ export default function CoachOrderDetailPage() {
             <span>{isScheduled ? "预约单" : "实时单"}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">学员</span>
+            <span className="text-gray-500">客户</span>
             <span>{order.demander_id}</span>
           </div>
           <div className="flex justify-between">
@@ -146,7 +146,7 @@ export default function CoachOrderDetailPage() {
         {isScheduled && deal?.status === "pending" && (
           <div className="space-y-3">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-yellow-800 text-sm">学员已支付定金，请确认是否接单。</p>
+              <p className="text-yellow-800 text-sm">客户已支付定金，请确认是否接单。</p>
             </div>
             {!showReject ? (
               <div className="flex gap-2">

@@ -265,6 +265,49 @@ class TestRegister:
             assert resp.json()["code"] == 1001
             assert "大陆手机号" in resp.json()["message"]
 
+    def test_register_as_supplier_only_grants_supplier_role(self):
+        """注册选择司机身份时只授予 supplier 角色。"""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13900000021", "name": "司机甲", "role": "supplier"},
+        )
+        assert resp.status_code == 200
+        token = resp.json()["data"]["access_token"]
+        me = client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+        ).json()["data"]
+        assert me["roles"] == ["supplier"]
+        assert me["active_role"] == "supplier"
+
+    def test_register_as_demander_only_grants_demander_role(self):
+        """注册选择客户身份时只授予 demander 角色。"""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13900000022", "name": "客户甲", "role": "demander"},
+        )
+        assert resp.status_code == 200
+        token = resp.json()["data"]["access_token"]
+        me = client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+        ).json()["data"]
+        assert me["roles"] == ["demander"]
+        assert me["active_role"] == "demander"
+
+    def test_register_with_invalid_role_returns_401(self):
+        """非法注册身份应被拒绝。"""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"phone": "13900000023", "name": "非法身份", "role": "admin"},
+        )
+        assert resp.status_code == 401
+        assert "注册身份" in resp.json()["message"]
+
     def test_register_duplicate_phone_returns_401(self):
         app = _make_app()
         client = TestClient(app)

@@ -19,7 +19,7 @@ export function MockPayment({ dealId, onPaid }: MockPaymentProps) {
     return (
       <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
         <p className="text-green-800">定金已支付</p>
-        <p className="text-sm text-gray-500 mt-1">等待教练确认...</p>
+        <p className="text-sm text-gray-500 mt-1">等待司机确认...</p>
       </div>
     );
   }

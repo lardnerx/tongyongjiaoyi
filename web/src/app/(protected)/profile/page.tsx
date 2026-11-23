@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const ROLE_LABELS: Record<string, string> = {
-  demander: "学员",
-  supplier: "教练",
+  demander: "客户（会员）",
+  supplier: "司机",
   admin: "管理员",
 };
 

@@ -20,13 +20,13 @@ export default function EscortStudentHomePage() {
     {
       key: "instant",
       label: "实时叫车",
-      description: "立即呼叫附近教练",
+      description: "立即呼叫附近司机",
       href: "/escort/student/book-instant",
     },
     {
       key: "scheduled",
       label: "预约叫车",
-      description: "选择时间与教练",
+      description: "选择时间与司机",
       href: "/escort/student/book-scheduled",
     },
     {
@@ -38,7 +38,7 @@ export default function EscortStudentHomePage() {
     {
       key: "friends",
       label: "我的好友",
-      description: "查看教练好友",
+      description: "查看司机好友",
       href: "/friends",
     },
   ];
