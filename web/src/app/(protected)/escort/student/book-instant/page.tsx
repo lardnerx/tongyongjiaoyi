@@ -13,7 +13,7 @@ export default function BookInstantPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [location, setLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [carType, setCarType] = useState("manual");
+  const [carType, setCarType] = useState("economy");
   const [duration, setDuration] = useState(2);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -31,6 +31,7 @@ export default function BookInstantPage() {
         domain_tag: "escort",
         origin_lat: location.lat,
         origin_lng: location.lng,
+        origin_address: location.address,
         car_type: carType,
         required_skills: ["coach_license"],
         duration_hours: duration,
@@ -61,8 +62,10 @@ export default function BookInstantPage() {
             value={carType}
             onChange={(e) => setCarType(e.target.value)}
           >
-            <option value="manual">手动挡</option>
-            <option value="auto">自动挡</option>
+            <option value="economy">经济型</option>
+            <option value="professional">专业型</option>
+            <option value="luxury">豪华型</option>
+            <option value="business">商务型</option>
           </select>
         </div>
 

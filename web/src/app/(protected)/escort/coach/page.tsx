@@ -9,6 +9,7 @@ import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
 import { MapView } from "@/components/map-view";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
+import { formatCarType } from "@/types/escort";
 
 interface OrderWithLocation extends OrderInfo {
   origin_lat?: number;
@@ -105,7 +106,7 @@ export default function CoachHallPage() {
       id: o.task_id,
       lat: o.origin_lat!,
       lng: o.origin_lng!,
-      label: `${o.car_type === "manual" ? "手动挡" : "自动挡"} · ${o.duration_hours}h`,
+      label: `${formatCarType(o.car_type)} · ${o.duration_hours}h`,
     }));
 
   return (
@@ -154,7 +155,7 @@ export default function CoachHallPage() {
               <div key={order.task_id} className="bg-white rounded-lg border p-4 space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">{order.task_id.slice(0, 8)}</span>
-                  <span>{order.car_type === "manual" ? "手动挡" : "自动挡"}</span>
+                  <span>{formatCarType(order.car_type)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>时长：{order.duration_hours}小时</span>

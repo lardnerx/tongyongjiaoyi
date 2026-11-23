@@ -12,6 +12,7 @@ import { ReviewForm } from "@/components/review-form";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import type { OrderStatus } from "@/types/escort";
+import { formatCarType } from "@/types/escort";
 
 export default function CoachOrderDetailPage() {
   const params = useParams();
@@ -121,7 +122,7 @@ export default function CoachOrderDetailPage() {
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">车型</span>
-            <span>{order.car_type === "manual" ? "手动挡" : "自动挡"}</span>
+            <span>{formatCarType(order.car_type)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">时长</span>

@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api-client";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
+import { formatCarType } from "@/types/escort";
 
 export default function CoachOrdersPage() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function CoachOrdersPage() {
                 <span className="text-sm text-gray-500">{order.task_id.slice(0, 8)}</span>
                 <OrderStatusBadge status={order.status} />
               </div>
-              <p className="text-sm">{order.car_type === "manual" ? "手动挡" : "自动挡"} · {order.duration_hours}小时</p>
+              <p className="text-sm">{formatCarType(order.car_type)} · {order.duration_hours}小时</p>
             </div>
           ))}
         </div>

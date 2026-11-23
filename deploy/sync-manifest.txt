@@ -25,6 +25,7 @@ src/umcp_core/transport/routers/escort/orders.py
 src/umcp_core/transport/routers/__init__.py
 src/umcp_core/transport/routers/admin/rules.py
 plugins/escort_driving/__init__.py
+plugins/escort_driving/tasks.py
 web/src/app/layout.tsx
 web/src/middleware.ts
 web/src/lib/api-client.ts
@@ -42,3 +43,9 @@ web/src/app/(legal)/about/page.tsx
 web/src/app/(protected)/dashboard/page.tsx
 web/src/app/(protected)/services/page.tsx
 web/src/app/(protected)/escort/student/book-instant/page.tsx
+web/src/app/(protected)/escort/student/orders/page.tsx
+web/src/app/(protected)/escort/student/orders/[id]/page.tsx
+web/src/app/(protected)/escort/coach/page.tsx
+web/src/app/(protected)/escort/coach/orders/page.tsx
+web/src/app/(protected)/escort/coach/orders/[id]/page.tsx
+web/src/types/escort.ts

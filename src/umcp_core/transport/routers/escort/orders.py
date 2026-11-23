@@ -41,6 +41,7 @@ class CreateOrderRequest(BaseModel):
     domain_tag: str
     origin_lat: float
     origin_lng: float
+    origin_address: str | None = None
     car_type: str
     required_skills: list[str]
     duration_hours: int
@@ -59,6 +60,7 @@ class OrderInfo(BaseModel):
     status: str
     demander_id: str
     car_type: str
+    origin_address: str | None = None
     duration_hours: int
     assigned_resource_id: str | None = None
     title: str | None = None
@@ -97,6 +99,7 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         status=task.status,
         demander_id=task.demander_id,
         car_type=task.structured_fields.get("car_type", ""),
+        origin_address=task.structured_fields.get("origin_address"),
         duration_hours=task.structured_fields.get("duration_hours", 0),
         assigned_resource_id=task.assigned_resource_id,
         title=task.title,
@@ -158,6 +161,7 @@ async def create_order(
         order_type=req.order_type,
         scheduled_at=scheduled_at,
         coach_level_pref=req.coach_level_pref,
+        origin_address=req.origin_address,
     )
     task.title = req.title
     task.description = req.description
@@ -206,6 +210,7 @@ async def create_order(
                 "demander_id": task.demander_id,
                 "origin_lat": req.origin_lat,
                 "origin_lng": req.origin_lng,
+                "origin_address": req.origin_address,
                 "car_type": req.car_type,
                 "duration_hours": req.duration_hours,
                 "coach_level_pref": req.coach_level_pref,

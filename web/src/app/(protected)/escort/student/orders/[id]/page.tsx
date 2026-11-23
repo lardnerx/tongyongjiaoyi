@@ -16,6 +16,7 @@ import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
 import { Button } from "@/components/ui/button";
 import type { OrderStatus } from "@/types/escort";
+import { formatCarType } from "@/types/escort";
 
 export default function StudentOrderDetailPage() {
   const params = useParams();
@@ -72,9 +73,13 @@ export default function StudentOrderDetailPage() {
             <span className="text-gray-500">类型</span>
             <span>{isScheduled ? "预约单" : "实时单"}</span>
           </div>
+          <div className="flex justify-between gap-4">
+            <span className="shrink-0 text-gray-500">上车地点</span>
+            <span className="break-all text-right">{order.origin_address || "未记录"}</span>
+          </div>
           <div className="flex justify-between">
             <span className="text-gray-500">车型</span>
-            <span>{order.car_type === "manual" ? "手动挡" : "自动挡"}</span>
+            <span>{formatCarType(order.car_type)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">时长</span>
@@ -103,8 +108,14 @@ export default function StudentOrderDetailPage() {
         {/* 实时单：等待接单 */}
         {!isScheduled && currentStatus === "published" && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-yellow-800 text-sm">等待教练抢单</span>
+            <p className="text-sm font-medium text-yellow-800">
+              订单已发布，正在通知附近教练
+            </p>
+            <p className="text-xs text-yellow-600">
+              教练接单后会立即通知您；若长时间无人接单，可取消订单后重新叫车。
+            </p>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-yellow-700">剩余等待时间</span>
               <CountdownTimer
                 createdAt={order.created_at ?? new Date().toISOString()}
                 timeoutSeconds={cancelRules.data?.timeout_seconds ?? 60}

@@ -30,6 +30,7 @@ class EscortTask(StandardTask):
         order_type: str = "REALTIME",
         scheduled_at: datetime | None = None,
         coach_level_pref: str = "ANY",
+        origin_address: str | None = None,
         **kwargs: Any,
     ) -> None:
         if domain_tag is None:
@@ -52,6 +53,8 @@ class EscortTask(StandardTask):
             scheduled_at.isoformat() if scheduled_at else None
         )
         self.structured_fields["coach_level_pref"] = coach_level_pref
+        if origin_address:
+            self.structured_fields["origin_address"] = origin_address
 
         # 供 Hourly 支付策略使用
         self.custom_fields["actual_hours"] = duration_hours

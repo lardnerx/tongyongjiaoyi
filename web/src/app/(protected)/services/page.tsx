@@ -24,6 +24,30 @@ export default function ServicesPage() {
 
   const services: ServiceItem[] = [
     {
+      key: "ride",
+      name: "网约车",
+      description: "实时叫车，就近派单",
+      href: null,
+      icon: (
+        <svg
+          className={iconClass}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 16h18" />
+          <path d="M5 16V9.5L7.2 6h9.6L19 9.5V16" />
+          <path d="M7 6h10" />
+          <circle cx="7.5" cy="16" r="1.8" />
+          <circle cx="16.5" cy="16" r="1.8" />
+          <path d="M9 19.5l-1 1.5M15 19.5l1 1.5" />
+        </svg>
+      ),
+    },
+    {
       key: "escort",
       name: "陪驾",
       description: "实时或预约陪驾，专业教练上门",

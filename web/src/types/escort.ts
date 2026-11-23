@@ -1,3 +1,20 @@
+/** 车型标签。兼容历史值（manual/auto）与新增档位。 */
+export const CAR_TYPE_LABELS: Record<string, string> = {
+  economy: "经济型",
+  professional: "专业型",
+  luxury: "豪华型",
+  business: "商务型",
+  manual: "手动挡",
+  auto: "自动挡",
+  automatic: "自动挡",
+};
+
+/** 将后端车型值转为中文展示。 */
+export function formatCarType(carType: string | null | undefined): string {
+  if (!carType) return "未填写";
+  return CAR_TYPE_LABELS[carType] ?? carType;
+}
+
 /** 订单状态（后端 TaskStatus 小写字符串）。 */
 export type OrderStatus =
   | "draft"
@@ -15,6 +32,7 @@ export interface OrderInfo {
   status: OrderStatus;
   demander_id: string;
   car_type: string;
+  origin_address?: string | null;
   duration_hours: number;
   assigned_resource_id: string | null;
   title: string | null;
