@@ -35,6 +35,7 @@ web/src/lib/auth-store.ts
 web/src/components/site-footer.tsx
 web/src/components/avatar-upload.tsx
 web/src/components/amap-picker.tsx
+web/src/components/map-view.tsx
 web/src/components/escort-order-fields.tsx
 web/src/components/payment-order-summary.tsx
 web/src/components/mock-payment.tsx
