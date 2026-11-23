@@ -61,4 +61,6 @@ web/src/app/(protected)/escort/student/orders/[id]/page.tsx
 web/src/app/(protected)/escort/coach/page.tsx
 web/src/app/(protected)/escort/coach/orders/page.tsx
 web/src/app/(protected)/escort/coach/orders/[id]/page.tsx
+web/src/app/(protected)/escort/coach/orders/[id]/service/page.tsx
+web/src/app/(protected)/escort/coach/orders/[id]/settlement/page.tsx
 web/src/types/escort.ts

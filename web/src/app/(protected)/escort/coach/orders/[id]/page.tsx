@@ -50,20 +50,8 @@ export default function CoachOrderDetailPage() {
         lng: 116.4,
       });
       invalidate();
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCheckOut = async () => {
-    setActionLoading(true);
-    try {
-      await apiClient.post(`/escort/orders/${taskId}/check-out`, {
-        coach_id: user?.user_id,
-        lat: 39.9,
-        lng: 116.4,
-      });
-      invalidate();
+      // 签到成功后进入服务计时页
+      router.push(`/escort/coach/orders/${taskId}/service`);
     } finally {
       setActionLoading(false);
     }
@@ -204,8 +192,22 @@ export default function CoachOrderDetailPage() {
           </Button>
         )}
         {order.status === "in_progress" && (
-          <Button className="w-full" onClick={handleCheckOut} disabled={actionLoading}>
-            {actionLoading ? "签退中..." : "签退"}
+          <Button
+            className="w-full"
+            onClick={() => router.push(`/escort/coach/orders/${taskId}/service`)}
+          >
+            进入服务计时
+          </Button>
+        )}
+
+        {/* 已完成：查看结算单 */}
+        {order.status === "completed" && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => router.push(`/escort/coach/orders/${taskId}/settlement`)}
+          >
+            查看结算单
           </Button>
         )}
 

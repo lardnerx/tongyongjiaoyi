@@ -76,6 +76,8 @@ class OrderInfo(BaseModel):
     deal_id: str | None = None
     cancel_penalty: float = 0.0
     created_at: str | None = None
+    check_in_at: str | None = None
+    check_out_at: str | None = None
 
 
 class ScheduledOrderInfo(BaseModel):
@@ -153,6 +155,8 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         coach_level_pref=task.structured_fields.get("coach_level_pref"),
         deal_id=None,  # 由调用方按需填充（get_order 反查 deal_repo）
         created_at=_iso_utc(task.created_at),
+        check_in_at=task.structured_fields.get("check_in_at"),
+        check_out_at=task.structured_fields.get("check_out_at"),
     )
 
 
@@ -516,6 +520,7 @@ async def check_in_order(
         task.start_execution()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
+    task.structured_fields["check_in_at"] = _iso_utc(datetime.utcnow())
     server.task_repo.save(task)
 
     # 推送签到事件给学员
@@ -555,6 +560,19 @@ async def check_out_order(
         task.complete()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
+    now = datetime.utcnow()
+    task.structured_fields["check_out_at"] = _iso_utc(now)
+    # 记录实际服务时长，供结算页使用
+    check_in_raw = task.structured_fields.get("check_in_at")
+    if check_in_raw:
+        try:
+            check_in_dt = datetime.fromisoformat(check_in_raw)
+            if check_in_dt.tzinfo is not None:
+                check_in_dt = check_in_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            actual_hours = (now - check_in_dt).total_seconds() / 3600
+            task.custom_fields["actual_hours"] = round(actual_hours, 2)
+        except (ValueError, TypeError):
+            pass
     server.task_repo.save(task)
     return ok(_task_to_order_info(task).model_dump())
 

@@ -190,6 +190,43 @@ def test_cancel_order(authed_client, jwt_service):
     assert resp.status_code == 200
 
 
+def test_check_in_out_records_timestamps(authed_client):
+    """签到/签退记录时间戳，供计时页与结算页使用。"""
+    uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
+    create_resp = authed_client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": "student_1",
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "AUTO",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = create_resp.json()["data"]["task_id"]
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/claim", json={"coach_id": uid}
+    )
+
+    check_in = authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    ).json()["data"]
+    assert check_in["status"] == "in_progress"
+    assert check_in["check_in_at"]
+
+    check_out = authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-out",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    ).json()["data"]
+    assert check_out["status"] == "completed"
+    assert check_out["check_in_at"] == check_in["check_in_at"]
+    assert check_out["check_out_at"]
+
+
 def test_list_orders_by_coach_id(authed_client):
     """司机按 coach_id 能查到已接订单，其他司机查不到。"""
     uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]

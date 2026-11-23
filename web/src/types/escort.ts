@@ -82,6 +82,8 @@ export interface OrderInfo {
   deal_id?: string | null;
   cancel_penalty?: number;
   created_at?: string;
+  check_in_at?: string | null;
+  check_out_at?: string | null;
 }
 
 /** 评价信息。 */
