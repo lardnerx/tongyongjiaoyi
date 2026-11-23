@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -92,6 +92,20 @@ def _order_type_of(task: EscortTask) -> str:
     )
 
 
+def _iso_utc(dt: datetime | None) -> str | None:
+    """序列化为带时区的 ISO 字符串。
+
+    Task.created_at 由 datetime.utcnow() 生成（naive，实际是 UTC）。若直接
+    isoformat()，前端 new Date() 会按本地时区解析，东八区会凭空早 8 小时，
+    导致刚下的单立刻显示「已超时」。
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
     return OrderInfo(
         task_id=task.task_id,
@@ -106,7 +120,7 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         scheduled_at=task.structured_fields.get("scheduled_at"),
         coach_level_pref=task.structured_fields.get("coach_level_pref"),
         deal_id=None,  # 由调用方按需填充（get_order 反查 deal_repo）
-        created_at=task.created_at.isoformat() if task.created_at else None,
+        created_at=_iso_utc(task.created_at),
     )
 
 

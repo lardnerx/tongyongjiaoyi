@@ -161,6 +161,10 @@ def test_get_order_detail(authed_client):
     resp = authed_client.get(f"/api/v1/escort/orders/{task_id}")
     assert resp.status_code == 200
     assert resp.json()["data"]["task_id"] == task_id
+    # created_at 必须带时区，否则前端按本地时区解析会早 8 小时并误判「已超时」
+    created_at = resp.json()["data"]["created_at"]
+    assert created_at is not None
+    assert created_at.endswith("+00:00") or created_at.endswith("Z")
 
 
 def test_cancel_order(authed_client, jwt_service):
