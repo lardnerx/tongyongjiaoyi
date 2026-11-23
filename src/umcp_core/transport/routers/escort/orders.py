@@ -338,6 +338,24 @@ async def list_available_orders(
     return ok(data=available)
 
 
+@router.get("/orders/balance", response_model=Envelope)
+async def get_coach_balance(
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """司机余额：已接订单中客户已确认支付的结算金额合计。"""
+    tasks = [
+        t
+        for t in server.task_repo.list_all()
+        if t.assigned_resource_id == current_user.user_id
+    ]
+    paid_tasks = [t for t in tasks if t.structured_fields.get("customer_confirmed_at")]
+    balance = round(
+        sum(float(t.structured_fields.get("settled_amount") or 0) for t in paid_tasks), 2
+    )
+    return ok(data={"balance": balance, "order_count": len(paid_tasks)})
+
+
 @router.get("/orders/{task_id}", response_model=Envelope)
 async def get_order(
     task_id: str,

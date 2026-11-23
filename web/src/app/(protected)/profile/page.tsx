@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth-store";
 import { apiClient } from "@/lib/api-client";
 import AvatarUpload from "@/components/avatar-upload";
@@ -18,6 +19,17 @@ export default function ProfilePage() {
   const { user, activeRole, logout, setUser } = useAuthStore();
   // 客户返回服务列表，司机返回控制台
   const homeHref = activeRole === "supplier" ? "/dashboard" : "/services";
+
+  // 司机余额：已确认支付订单的结算金额合计
+  const { data: balanceData } = useQuery({
+    queryKey: ["coach-balance", user?.user_id],
+    queryFn: () =>
+      apiClient.get<{ balance: number; order_count: number }>(
+        "/escort/orders/balance"
+      ),
+    enabled: activeRole === "supplier" && !!user?.user_id,
+    staleTime: 0,
+  });
 
   const handleLogout = async () => {
     try {
@@ -85,6 +97,25 @@ export default function ProfilePage() {
             </p>
           </CardContent>
         </Card>
+
+        {/* 司机余额卡片 */}
+        {activeRole === "supplier" && (
+          <Card>
+            <CardContent className="py-5">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">余额</p>
+                  <p className="mt-1 text-3xl font-bold">
+                    ¥{(balanceData?.balance ?? 0).toFixed(2)}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-400">
+                  已结算 {balanceData?.order_count ?? 0} 单
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 个人信息卡片 */}
         <Card>

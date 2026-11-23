@@ -91,15 +91,14 @@ export default function CoachOrderDetailPage() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="mx-auto max-w-md space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">订单详情</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold">订单详情</h1>
+            <OrderStatusBadge status={order.status as OrderStatus} />
+          </div>
           <Button variant="ghost" onClick={() => router.push("/escort/coach/orders")}>返回</Button>
         </div>
 
         <div className="bg-white rounded-lg border p-4 space-y-2">
-          <div className="flex justify-between">
-            <span className="text-gray-500">状态</span>
-            <OrderStatusBadge status={order.status as OrderStatus} />
-          </div>
           <div className="flex justify-between">
             <span className="text-gray-500">类型</span>
             <span>{isScheduled ? "预约单" : "实时单"}</span>

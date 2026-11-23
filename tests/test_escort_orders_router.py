@@ -234,6 +234,11 @@ def test_confirm_payment_after_completed(authed_client):
     assert again.status_code == 200
     assert again.json()["data"]["customer_confirmed_at"] == data["customer_confirmed_at"]
 
+    # 司机余额 = 已确认支付订单金额合计
+    balance = authed_client.get("/api/v1/escort/orders/balance").json()["data"]
+    assert balance["balance"] == 200.0
+    assert balance["order_count"] == 1
+
 
 def test_check_in_out_records_timestamps(authed_client):
     """签到/签退记录时间戳，供计时页与结算页使用。"""
