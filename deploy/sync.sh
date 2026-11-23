@@ -62,7 +62,8 @@ fetch() {
     mkdir -p "$(dirname "$dest")"
     tmp="$(mktemp)"
     for base in "${MIRRORS[@]}"; do
-        if curl -fsSL --retry 2 --max-time 30 "${base}/${path}" -o "$tmp"; then
+        # -g/--globoff：路径里含 [id] 这类方括号，必须关闭 curl 的通配符解析
+        if curl -fsSL -g --retry 2 --max-time 30 "${base}/${path}" -o "$tmp"; then
             mv "$tmp" "$dest"
             echo "  ok   ${path}"
             return 0
