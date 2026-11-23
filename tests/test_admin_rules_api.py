@@ -81,7 +81,7 @@ def test_get_rule_detail(app_client):
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["rule_key"] == "escort.cancel.realtime.timeout_seconds"
-    assert data["rule_value"] == 120
+    assert data["rule_value"] == 300
 
 
 def test_get_rule_detail_not_found(app_client):

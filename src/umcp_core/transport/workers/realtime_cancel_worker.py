@@ -35,7 +35,7 @@ class RealtimeCancelWorker:
             return
 
         timeout_seconds = rule_config.get(
-            "escort.cancel.realtime.timeout_seconds", default=120
+            "escort.cancel.realtime.timeout_seconds", default=300
         )
         expand_after_seconds = rule_config.get(
             "escort.cancel.realtime.expand_after_seconds", default=30

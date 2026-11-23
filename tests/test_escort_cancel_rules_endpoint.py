@@ -39,7 +39,7 @@ def test_get_cancel_rules(app_client):
     )
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["timeout_seconds"] == 120
+    assert data["timeout_seconds"] == 300
     assert data["expand_after_seconds"] == 30
     assert data["penalty_tiers"] == [
         {"hours_before": 24, "penalty": 0.2},

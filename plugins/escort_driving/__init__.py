@@ -111,7 +111,7 @@ def register_plugin(server: "UMCPServer") -> None:
     logger.info("规则仓储: %s", type(rule_config._repo).__name__)
     rule_config.set_defaults(
         {
-            "escort.cancel.realtime.timeout_seconds": 120,
+            "escort.cancel.realtime.timeout_seconds": 300,
             "escort.cancel.realtime.expand_after_seconds": 30,
             "escort.match.realtime.radius_km": 5.0,   # 实时单首轮推送半径（<=0 不限）
             "escort.cancel.scheduled.penalty_tiers": [

@@ -144,7 +144,7 @@ export default function StudentOrderDetailPage() {
               <span className="text-xs text-yellow-700">剩余等待时间</span>
               <CountdownTimer
                 createdAt={order.created_at ?? new Date().toISOString()}
-                timeoutSeconds={cancelRules.data?.timeout_seconds ?? 60}
+                timeoutSeconds={cancelRules.data?.timeout_seconds ?? 300}
               />
             </div>
           </div>

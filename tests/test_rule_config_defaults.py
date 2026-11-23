@@ -22,9 +22,9 @@ def test_rule_config_registered(server_with_escort: UMCPServer):
 
 
 def test_default_realtime_timeout_seconds(server_with_escort: UMCPServer):
-    """默认实时单超时 120 秒。"""
+    """默认实时单超时 300 秒。"""
     value = server_with_escort.rule_config.get("escort.cancel.realtime.timeout_seconds")
-    assert value == 120
+    assert value == 300
 
 
 def test_default_realtime_radius_km(server_with_escort: UMCPServer):
