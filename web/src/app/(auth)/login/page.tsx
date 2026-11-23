@@ -21,8 +21,14 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone) {
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone) {
       setError("请输入手机号");
+      return;
+    }
+    // 中国大陆手机号：1 开头、第二位 3-9、共 11 位
+    if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+      setError("请输入正确的 11 位大陆手机号");
       return;
     }
     if (!password) {
@@ -35,7 +41,7 @@ export default function LoginPage() {
       // 1. 登录获取 token
       const tokenResp = await apiClient.post<TokenResponse>("/auth/login", {
         credential_type: "phone",
-        token: phone,
+        token: trimmedPhone,
         password,
       } as LoginRequest & { password?: string });
       setTokens(tokenResp.access_token, tokenResp.refresh_token);
@@ -87,9 +93,11 @@ export default function LoginPage() {
               <label className="text-sm font-medium">手机号</label>
               <Input
                 type="tel"
-                placeholder="请输入手机号"
+                inputMode="numeric"
+                maxLength={11}
+                placeholder="请输入 11 位大陆手机号"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}
               />
             </div>
