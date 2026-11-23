@@ -19,6 +19,12 @@ export default function StudentOrdersPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { data: orders, isLoading } = useOrders(user?.user_id);
+  // 按下单时间倒序展示，新单在前
+  const sortedOrders = orders
+    ? [...orders].sort((a, b) =>
+        (b.created_at || "").localeCompare(a.created_at || "")
+      )
+    : undefined;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -30,12 +36,12 @@ export default function StudentOrdersPage() {
 
         {isLoading && <p className="text-gray-500">加载中...</p>}
 
-        {orders && orders.length === 0 && (
+        {sortedOrders && sortedOrders.length === 0 && (
           <p className="text-gray-500 text-center py-8">暂无订单</p>
         )}
 
         <div className="space-y-3">
-          {orders?.map((order) => {
+          {sortedOrders?.map((order) => {
             const isScheduled = order.order_type === "SCHEDULED";
             return (
               <div

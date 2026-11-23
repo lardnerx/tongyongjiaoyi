@@ -190,6 +190,29 @@ def test_cancel_order(authed_client, jwt_service):
     assert resp.status_code == 200
 
 
+def test_list_orders_sorted_by_created_at_desc(authed_client):
+    """我的订单按下单时间倒序返回（新单在前）。"""
+    payload = {
+        "demander_id": "student_1",
+        "domain_tag": "escort",
+        "origin_lat": 39.9042,
+        "origin_lng": 116.4074,
+        "car_type": "AUTO",
+        "required_skills": ["escort"],
+        "duration_hours": 2,
+        "order_type": "REALTIME",
+    }
+    first_id = authed_client.post("/api/v1/escort/orders", json=payload).json()["data"]["task_id"]
+    second_id = authed_client.post("/api/v1/escort/orders", json=payload).json()["data"]["task_id"]
+
+    resp = authed_client.get(
+        "/api/v1/escort/orders", params={"demander_id": "student_1"}
+    )
+    assert resp.status_code == 200
+    ids = [o["task_id"] for o in resp.json()["data"]]
+    assert ids[:2] == [second_id, first_id]
+
+
 def test_list_available_orders(authed_client):
     """司机接单大厅可拉取待抢的实时单（含起点坐标）。"""
     create_resp = authed_client.post(

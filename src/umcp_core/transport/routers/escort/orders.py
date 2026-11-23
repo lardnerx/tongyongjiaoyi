@@ -281,9 +281,11 @@ async def list_orders(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """查询学员订单列表。"""
+    """查询学员订单列表（按下单时间倒序，新单在前）。"""
     tasks = server.task_repo.find_by_demander(demander_id)
-    return ok(data=[_task_to_order_info(t).model_dump() for t in tasks])
+    orders = [_task_to_order_info(t).model_dump() for t in tasks]
+    orders.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return ok(data=orders)
 
 
 @router.get("/orders/available", response_model=Envelope)
