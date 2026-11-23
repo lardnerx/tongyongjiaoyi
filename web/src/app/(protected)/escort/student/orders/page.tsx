@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrders } from "@/hooks/use-orders";
+import { apiClient } from "@/lib/api-client";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Button } from "@/components/ui/button";
 import { formatCarType, formatEstimate } from "@/types/escort";
@@ -17,8 +20,27 @@ function formatTime(value: string | null | undefined): string {
 
 export default function StudentOrdersPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { data: orders, isLoading } = useOrders(user?.user_id);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState("");
+
+  // 确认完成订单并支付
+  const handleConfirmPay = async (taskId: string) => {
+    if (!window.confirm("确认服务已完成？确认后将支付本单费用。")) return;
+    setPayingId(taskId);
+    setPayError("");
+    try {
+      await apiClient.post(`/escort/orders/${taskId}/confirm`, {});
+      await queryClient.invalidateQueries({ queryKey: ["orders", user?.user_id] });
+    } catch {
+      setPayError("确认支付失败，请重试");
+    } finally {
+      setPayingId(null);
+    }
+  };
+
   // 按下单时间倒序展示，新单在前
   const sortedOrders = orders
     ? [...orders].sort((a, b) =>
@@ -39,6 +61,8 @@ export default function StudentOrdersPage() {
         {sortedOrders && sortedOrders.length === 0 && (
           <p className="text-gray-500 text-center py-8">暂无订单</p>
         )}
+
+        {payError && <p className="text-sm text-red-500">{payError}</p>}
 
         <div className="space-y-3">
           {sortedOrders?.map((order) => {
@@ -84,6 +108,30 @@ export default function StudentOrdersPage() {
                   <span className="text-gray-500">下单时间</span>
                   <span>{formatTime(order.created_at)}</span>
                 </div>
+
+                {/* 已完成订单：确认完成并支付 */}
+                {order.status === "completed" &&
+                  (order.customer_confirmed_at ? (
+                    <p className="text-right text-sm text-green-600">
+                      已确认并支付
+                      {order.settled_amount != null
+                        ? ` ¥${order.settled_amount.toFixed(2)}`
+                        : ""}
+                    </p>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleConfirmPay(order.task_id);
+                      }}
+                      disabled={payingId === order.task_id}
+                    >
+                      {payingId === order.task_id
+                        ? "支付中..."
+                        : `确认完成并支付 ${formatEstimate(order.car_type, order.duration_hours)}`}
+                    </Button>
+                  ))}
               </div>
             );
           })}

@@ -84,6 +84,8 @@ export interface OrderInfo {
   created_at?: string;
   check_in_at?: string | null;
   check_out_at?: string | null;
+  customer_confirmed_at?: string | null;
+  settled_amount?: number | null;
 }
 
 /** 评价信息。 */

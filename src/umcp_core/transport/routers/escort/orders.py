@@ -30,6 +30,14 @@ router = APIRouter(prefix="/api/v1/escort", tags=["escort-orders"])
 _claim_locks: dict[str, threading.Lock] = {}
 _claim_locks_guard = threading.Lock()
 
+# 各车型单价（元/小时），与前端 CAR_TYPE_UNIT_PRICES 保持一致
+_CAR_TYPE_HOURLY_PRICES: dict[str, float] = {
+    "economy": 100.0,
+    "professional": 200.0,
+    "luxury": 500.0,
+    "business": 400.0,
+}
+
 
 def _get_claim_lock(task_id: str) -> threading.Lock:
     """获取指定 task_id 的锁（线程安全）。"""
@@ -78,6 +86,8 @@ class OrderInfo(BaseModel):
     created_at: str | None = None
     check_in_at: str | None = None
     check_out_at: str | None = None
+    customer_confirmed_at: str | None = None
+    settled_amount: float | None = None
 
 
 class ScheduledOrderInfo(BaseModel):
@@ -157,6 +167,8 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         created_at=_iso_utc(task.created_at),
         check_in_at=task.structured_fields.get("check_in_at"),
         check_out_at=task.structured_fields.get("check_out_at"),
+        customer_confirmed_at=task.structured_fields.get("customer_confirmed_at"),
+        settled_amount=task.structured_fields.get("settled_amount"),
     )
 
 
@@ -577,9 +589,39 @@ async def check_out_order(
     return ok(_task_to_order_info(task).model_dump())
 
 
+@router.post("/orders/{task_id}/confirm", response_model=Envelope)
+async def confirm_order_payment(
+    task_id: str,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """客户确认完成订单并支付（Mock 支付，金额 = 车型单价 × 预定时长）。
+
+    客户在「我的订单」已完成列表中确认后调用；重复确认幂等返回。
+    """
+    task = server.task_repo.find_by_id(task_id)
+    if task is None:
+        raise NotFoundError(message=f"订单 {task_id} 不存在")
+    if current_user.user_id != task.demander_id:
+        raise PermissionDeniedError(message="只能确认自己的订单")
+    if task.status != TaskStatus.COMPLETED:
+        raise IllegalStateError(message=f"订单状态 {task.status} 不允许确认支付")
+    if task.structured_fields.get("customer_confirmed_at"):
+        return ok(_task_to_order_info(task).model_dump())
+
+    car_type = task.structured_fields.get("car_type", "")
+    duration_hours = task.structured_fields.get("duration_hours", 0) or 0
+    unit_price = _CAR_TYPE_HOURLY_PRICES.get(car_type)
+    task.structured_fields["customer_confirmed_at"] = _iso_utc(datetime.utcnow())
+    task.structured_fields["settled_amount"] = (
+        round(unit_price * duration_hours, 2) if unit_price else None
+    )
+    server.task_repo.save(task)
+    return ok(_task_to_order_info(task).model_dump())
+
+
 class SelectCoachRequest(BaseModel):
     resource_id: str
-
 
 class SelectCoachResponse(BaseModel):
     deal_id: str

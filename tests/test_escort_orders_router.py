@@ -190,6 +190,51 @@ def test_cancel_order(authed_client, jwt_service):
     assert resp.status_code == 200
 
 
+def test_confirm_payment_after_completed(authed_client):
+    """客户在已完成订单上确认完成并支付，记录确认时间与结算金额。"""
+    uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
+    create_resp = authed_client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": uid,
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "economy",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = create_resp.json()["data"]["task_id"]
+
+    # 未完成订单不允许确认支付
+    early = authed_client.post(f"/api/v1/escort/orders/{task_id}/confirm")
+    assert early.status_code >= 400
+
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/claim", json={"coach_id": uid}
+    )
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-out",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+
+    confirmed = authed_client.post(f"/api/v1/escort/orders/{task_id}/confirm")
+    data = confirmed.json()["data"]
+    assert data["customer_confirmed_at"]
+    assert data["settled_amount"] == 200.0
+
+    # 重复确认幂等
+    again = authed_client.post(f"/api/v1/escort/orders/{task_id}/confirm")
+    assert again.status_code == 200
+    assert again.json()["data"]["customer_confirmed_at"] == data["customer_confirmed_at"]
+
+
 def test_check_in_out_records_timestamps(authed_client):
     """签到/签退记录时间戳，供计时页与结算页使用。"""
     uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
