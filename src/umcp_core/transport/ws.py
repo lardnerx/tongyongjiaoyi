@@ -110,12 +110,16 @@ class ConnectionManager:
         with self._lock:
             return set(self._online_coaches)
 
+    async def broadcast_to_coaches(self, message: dict[str, Any], coach_ids: list[str]) -> None:
+        """广播消息给指定教练（用于按距离筛选后的定向推送）。"""
+        for uid in coach_ids:
+            await self.send_to_user(uid, message)
+
     async def broadcast_to_online_coaches(self, message: dict[str, Any]) -> None:
         """广播消息给所有在线教练。"""
         with self._lock:
             coach_ids = list(self._online_coaches)
-        for uid in coach_ids:
-            await self.send_to_user(uid, message)
+        await self.broadcast_to_coaches(message, coach_ids)
 
     async def disconnect_all(self) -> None:
         """关闭所有连接（应用停止时调用）。"""

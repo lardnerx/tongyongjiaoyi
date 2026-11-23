@@ -24,6 +24,8 @@ src/umcp_core/transport/routers/notifications.py
 src/umcp_core/transport/routers/escort/orders.py
 src/umcp_core/transport/routers/__init__.py
 src/umcp_core/transport/routers/admin/rules.py
+src/umcp_core/transport/workers/realtime_cancel_worker.py
+src/umcp_core/transport/ws.py
 plugins/escort_driving/__init__.py
 plugins/escort_driving/tasks.py
 web/src/app/layout.tsx

@@ -106,6 +106,23 @@ def _iso_utc(dt: datetime | None) -> str | None:
     return dt.isoformat()
 
 
+def _pick_coaches_for_order(
+    server: Any, lat: float, lng: float, radius_km: float
+) -> list[str]:
+    """按半径筛选在线教练，返回应向其推送的 coach_id 列表。
+
+    - radius_km <= 0 或未启用 LBS：不限制距离，推给所有在线教练
+    - 否则只推给「在线 且 最新位置在半径内」的教练
+    """
+    manager = getattr(server, "ws_manager", None)
+    online = list(manager.online_coaches) if manager is not None else []
+    lbs = getattr(server, "lbs_service", None)
+    if lbs is None or radius_km <= 0:
+        return online
+    nearby_ids = {loc["resource_id"] for loc in lbs.nearby(lat, lng, radius_km)}
+    return [uid for uid in online if uid in nearby_ids]
+
+
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
     return OrderInfo(
         task_id=task.task_id,
@@ -213,7 +230,7 @@ async def create_order(
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
 
-    # 广播给所有在线教练
+    # 推送给半径内的在线教练（规则 escort.match.realtime.radius_km，<=0 不限）
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
         message = {
@@ -230,8 +247,17 @@ async def create_order(
                 "coach_level_pref": req.coach_level_pref,
             },
         }
+        rule_config = getattr(server, "rule_config", None)
+        radius_km = (
+            rule_config.get("escort.match.realtime.radius_km", default=5.0)
+            if rule_config is not None
+            else 5.0
+        )
+        target_coach_ids = _pick_coaches_for_order(
+            server, req.origin_lat, req.origin_lng, radius_km
+        )
         try:
-            await manager.broadcast_to_online_coaches(message)
+            await manager.broadcast_to_coaches(message, target_coach_ids)
         except Exception:
             pass
 
@@ -359,7 +385,7 @@ async def get_cancel_rules(
     return ok(
         CancelRulesResponse(
             timeout_seconds=rule_config.get(
-                "escort.cancel.realtime.timeout_seconds", default=60
+                "escort.cancel.realtime.timeout_seconds", default=120
             ),
             expand_after_seconds=rule_config.get(
                 "escort.cancel.realtime.expand_after_seconds", default=30

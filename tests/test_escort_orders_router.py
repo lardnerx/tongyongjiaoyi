@@ -188,3 +188,35 @@ def test_cancel_order(authed_client, jwt_service):
     task_id = create_resp.json()["data"]["task_id"]
     resp = authed_client.post(f"/api/v1/escort/orders/{task_id}/cancel")
     assert resp.status_code == 200
+
+
+def test_pick_coaches_for_order_filters_by_radius():
+    """实时单首轮只推半径内在线教练；半径 <=0 时退化为全量在线教练。"""
+    from types import SimpleNamespace
+
+    from umcp_core.shared.lbs.in_memory import InMemoryLBSService
+    from umcp_core.transport.routers.escort.orders import _pick_coaches_for_order
+
+    lbs = InMemoryLBSService()
+    lbs.update_location("near", 39.9042, 116.4074)
+    lbs.update_location("far", 31.2304, 121.4737)
+    server = SimpleNamespace(
+        ws_manager=SimpleNamespace(online_coaches={"near", "far", "no_location"}),
+        lbs_service=lbs,
+    )
+
+    # 5km 内只剩一个在线教练；无位置信息的教练不再收到首轮推送
+    assert _pick_coaches_for_order(server, 39.9042, 116.4074, 5.0) == ["near"]
+
+    # 半径为 0 表示不限距离
+    assert set(_pick_coaches_for_order(server, 39.9042, 116.4074, 0)) == {
+        "near",
+        "far",
+        "no_location",
+    }
+
+    # 未启用 LBS 时同样退化为全量
+    server_no_lbs = SimpleNamespace(
+        ws_manager=SimpleNamespace(online_coaches={"near"}), lbs_service=None
+    )
+    assert _pick_coaches_for_order(server_no_lbs, 39.9, 116.4, 5.0) == ["near"]

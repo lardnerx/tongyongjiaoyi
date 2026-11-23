@@ -22,9 +22,15 @@ def test_rule_config_registered(server_with_escort: UMCPServer):
 
 
 def test_default_realtime_timeout_seconds(server_with_escort: UMCPServer):
-    """默认实时单超时 60 秒。"""
+    """默认实时单超时 120 秒。"""
     value = server_with_escort.rule_config.get("escort.cancel.realtime.timeout_seconds")
-    assert value == 60
+    assert value == 120
+
+
+def test_default_realtime_radius_km(server_with_escort: UMCPServer):
+    """默认实时单首轮推送半径 5 公里。"""
+    value = server_with_escort.rule_config.get("escort.match.realtime.radius_km")
+    assert value == 5.0
 
 
 def test_default_realtime_expand_after_seconds(server_with_escort: UMCPServer):
