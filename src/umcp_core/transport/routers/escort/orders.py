@@ -61,6 +61,8 @@ class OrderInfo(BaseModel):
     demander_id: str
     car_type: str
     origin_address: str | None = None
+    origin_lat: float | None = None
+    origin_lng: float | None = None
     duration_hours: int
     assigned_resource_id: str | None = None
     title: str | None = None
@@ -120,7 +122,9 @@ def _pick_coaches_for_order(
     if lbs is None or radius_km <= 0:
         return online
     nearby_ids = {loc["resource_id"] for loc in lbs.nearby(lat, lng, radius_km)}
-    return [uid for uid in online if uid in nearby_ids]
+    nearby_online = [uid for uid in online if uid in nearby_ids]
+    # 半径内没有在线司机时退化为全量在线司机，避免订单无人可推
+    return nearby_online or online
 
 
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
@@ -131,6 +135,12 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         demander_id=task.demander_id,
         car_type=task.structured_fields.get("car_type", ""),
         origin_address=task.structured_fields.get("origin_address"),
+        origin_lat=(
+            task.spatio_temporal.origin_lat if task.spatio_temporal else None
+        ),
+        origin_lng=(
+            task.spatio_temporal.origin_lng if task.spatio_temporal else None
+        ),
         duration_hours=task.structured_fields.get("duration_hours", 0),
         assigned_resource_id=task.assigned_resource_id,
         title=task.title,
@@ -273,6 +283,27 @@ async def list_orders(
     """查询学员订单列表。"""
     tasks = server.task_repo.find_by_demander(demander_id)
     return ok(data=[_task_to_order_info(t).model_dump() for t in tasks])
+
+
+@router.get("/orders/available", response_model=Envelope)
+async def list_available_orders(
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope:
+    """司机接单大厅：拉取当前可抢的实时单（published 状态）。
+
+    WebSocket 推送是实时通道，司机进入大厅或刷新页面时需要主动拉取，
+    避免错过下单时不在线的订单。
+    """
+    tasks = server.task_repo.find_by_status(TaskStatus.PUBLISHED)
+    available = [
+        _task_to_order_info(t).model_dump()
+        for t in tasks
+        if t.domain_tag.value == "escort" and _order_type_of(t) == "REALTIME"
+    ]
+    # 新单在前
+    available.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return ok(data=available)
 
 
 @router.get("/orders/{task_id}", response_model=Envelope)

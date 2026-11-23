@@ -56,6 +56,33 @@ export default function CoachHallPage() {
     };
   }, [user?.user_id]);
 
+  // 进入大厅时主动拉取待抢订单并定期刷新：WS 推送是实时通道，
+  // 司机下单时不在线或刷新页面后会错过推送，需要靠拉取补齐。
+  useEffect(() => {
+    let cancelled = false;
+    const loadAvailable = async () => {
+      try {
+        const list = await apiClient.get<OrderWithLocation[]>("/escort/orders/available");
+        if (cancelled || !Array.isArray(list)) return;
+        setPendingOrders((prev) => {
+          const merged = new Map(prev.map((o) => [o.task_id, o]));
+          for (const order of list) {
+            if (!merged.has(order.task_id)) merged.set(order.task_id, order);
+          }
+          return Array.from(merged.values());
+        });
+      } catch {
+        // 拉取失败时依赖 WS 推送
+      }
+    };
+    loadAvailable();
+    const timer = setInterval(loadAvailable, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   // WS 收到新订单
   const handleNewOrder = useCallback((data: Record<string, unknown>) => {
     const newOrder: OrderWithLocation = {

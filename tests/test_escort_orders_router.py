@@ -190,6 +190,32 @@ def test_cancel_order(authed_client, jwt_service):
     assert resp.status_code == 200
 
 
+def test_list_available_orders(authed_client):
+    """司机接单大厅可拉取待抢的实时单（含起点坐标）。"""
+    create_resp = authed_client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": "student_1",
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "AUTO",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = create_resp.json()["data"]["task_id"]
+
+    resp = authed_client.get("/api/v1/escort/orders/available")
+    assert resp.status_code == 200
+    items = resp.json()["data"]
+    target = next(o for o in items if o["task_id"] == task_id)
+    assert target["status"] == "published"
+    assert target["origin_lat"] == 39.9042
+    assert target["origin_lng"] == 116.4074
+
+
 def test_pick_coaches_for_order_filters_by_radius():
     """实时单首轮只推半径内在线教练；半径 <=0 时退化为全量在线教练。"""
     from types import SimpleNamespace
@@ -220,3 +246,12 @@ def test_pick_coaches_for_order_filters_by_radius():
         ws_manager=SimpleNamespace(online_coaches={"near"}), lbs_service=None
     )
     assert _pick_coaches_for_order(server_no_lbs, 39.9, 116.4, 5.0) == ["near"]
+
+    # 半径内没有在线教练时退化为全部在线教练（无位置信息的司机也能收到）
+    server_no_nearby = SimpleNamespace(
+        ws_manager=SimpleNamespace(online_coaches={"no_location"}),
+        lbs_service=lbs,
+    )
+    assert _pick_coaches_for_order(server_no_nearby, 39.9042, 116.4074, 1.0) == [
+        "no_location"
+    ]
