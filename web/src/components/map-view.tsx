@@ -55,6 +55,8 @@ export function MapView({
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [sdkFailed, setSdkFailed] = useState(false);
+  // 地图实例异步创建完成，标记绘制需要等它就绪后再执行
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +71,7 @@ export function MapView({
           zoom,
           center: defaultCenter,
         });
+        setReady(true);
       })
       .catch(() => {
         setSdkFailed(true);
@@ -86,7 +89,7 @@ export function MapView({
   // 更新标记
   useEffect(() => {
     const map = mapInstance.current;
-    if (!map || sdkFailed) return;
+    if (!map || !ready || sdkFailed) return;
 
     // 清除旧标记
     markersRef.current.forEach((m) => map.remove(m));
@@ -113,13 +116,9 @@ export function MapView({
 
     // 自适应视野
     if (points.length > 0) {
-      const bounds = new AMap.Bounds();
-      points.forEach((pt) => {
-        bounds.extend(new AMap.LngLat(pt.lng, pt.lat));
-      });
-      map.setFitView(null, false, [40, 40, 40, 40]);
+      map.setFitView(markersRef.current, false, [40, 40, 40, 40]);
     }
-  }, [points, sdkFailed, onPointClick]);
+  }, [points, ready, sdkFailed, onPointClick]);
 
   if (sdkFailed) {
     return (

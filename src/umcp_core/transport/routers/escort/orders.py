@@ -255,6 +255,7 @@ async def create_order(
                 "car_type": req.car_type,
                 "duration_hours": req.duration_hours,
                 "coach_level_pref": req.coach_level_pref,
+                "created_at": _iso_utc(task.created_at),
             },
         }
         rule_config = getattr(server, "rule_config", None)

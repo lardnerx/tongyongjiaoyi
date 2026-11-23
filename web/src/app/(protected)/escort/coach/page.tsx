@@ -9,11 +9,26 @@ import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
 import { MapView } from "@/components/map-view";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
-import { formatCarType } from "@/types/escort";
+import { formatCarType, formatEstimate } from "@/types/escort";
 
 interface OrderWithLocation extends OrderInfo {
   origin_lat?: number;
   origin_lng?: number;
+}
+
+/** 两点间球面距离（公里）。 */
+function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 export default function CoachHallPage() {
@@ -23,6 +38,7 @@ export default function CoachHallPage() {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [mapMode, setMapMode] = useState(false);
+  const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(null);
   const { claimedOrderIds } = useOrderRealtimeStore();
 
   // 教练上线
@@ -32,21 +48,23 @@ export default function CoachHallPage() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setDriverPos({ lat, lng });
           apiClient
-            .post(`/escort/coaches/${user.user_id}/online`, {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-            })
+            .post(`/escort/coaches/${user.user_id}/online`, { lat, lng })
             .catch(() => {});
         },
         () => {
           // 定位失败，使用默认坐标
+          setDriverPos({ lat: 39.9, lng: 116.4 });
           apiClient
             .post(`/escort/coaches/${user.user_id}/online`, { lat: 39.9, lng: 116.4 })
             .catch(() => {});
         }
       );
     } else {
+      setDriverPos({ lat: 39.9, lng: 116.4 });
       apiClient
         .post(`/escort/coaches/${user.user_id}/online`, { lat: 39.9, lng: 116.4 })
         .catch(() => {});
@@ -91,9 +109,11 @@ export default function CoachHallPage() {
       status: "published",
       demander_id: data.demander_id as string,
       car_type: data.car_type as string,
+      origin_address: (data.origin_address as string) ?? null,
       duration_hours: data.duration_hours as number,
       assigned_resource_id: null,
       title: null,
+      created_at: data.created_at as string | undefined,
       origin_lat: data.origin_lat as number | undefined,
       origin_lng: data.origin_lng as number | undefined,
     };
@@ -128,7 +148,7 @@ export default function CoachHallPage() {
 
   // 地图标记点
   const mapPoints = visibleOrders
-    .filter((o) => o.origin_lat && o.origin_lng)
+    .filter((o) => o.origin_lat != null && o.origin_lng != null)
     .map((o) => ({
       id: o.task_id,
       lat: o.origin_lat!,
@@ -181,18 +201,40 @@ export default function CoachHallPage() {
             {visibleOrders.map((order) => (
               <div key={order.task_id} className="bg-white rounded-lg border p-4 space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">{order.task_id.slice(0, 8)}</span>
-                  <span>{formatCarType(order.car_type)}</span>
+                  <span className="text-gray-500">订单 {order.task_id.slice(0, 8)}</span>
+                  <span className="font-medium">{formatCarType(order.car_type)}</span>
                 </div>
+                <p className="text-sm text-gray-700">
+                  起点：
+                  {order.origin_address ||
+                    (order.origin_lat != null && order.origin_lng != null
+                      ? `${order.origin_lat.toFixed(4)}, ${order.origin_lng.toFixed(4)}`
+                      : "未提供")}
+                </p>
                 <div className="flex justify-between text-sm">
-                  <span>时长：{order.duration_hours}小时</span>
-                  <span>客户：{order.demander_id.slice(0, 8)}</span>
+                  <span>时长：{order.duration_hours} 小时</span>
+                  <span>预估：{formatEstimate(order.car_type, order.duration_hours)}</span>
                 </div>
-                {order.origin_lat && order.origin_lng && (
-                  <p className="text-xs text-gray-400">
-                    位置：{order.origin_lat.toFixed(4)}, {order.origin_lng.toFixed(4)}
-                  </p>
-                )}
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>
+                    {order.created_at
+                      ? `下单时间：${new Date(order.created_at).toLocaleTimeString("zh-CN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : `客户：${order.demander_id.slice(0, 8)}`}
+                  </span>
+                  {driverPos && order.origin_lat != null && order.origin_lng != null && (
+                    <span>
+                      距离约{" "}
+                      {distanceKm(driverPos, {
+                        lat: order.origin_lat,
+                        lng: order.origin_lng,
+                      }).toFixed(1)}{" "}
+                      km
+                    </span>
+                  )}
+                </div>
                 <Button
                   className="w-full"
                   onClick={() => handleClaim(order.task_id)}

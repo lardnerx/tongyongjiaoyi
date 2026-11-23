@@ -85,8 +85,10 @@ class RealtimeCancelWorker:
                             "origin_lat": task.spatio_temporal.origin_lat if task.spatio_temporal else None,
                             "origin_lng": task.spatio_temporal.origin_lng if task.spatio_temporal else None,
                             "car_type": task.structured_fields.get("car_type"),
+                            "origin_address": task.structured_fields.get("origin_address"),
                             "duration_hours": task.structured_fields.get("duration_hours"),
                             "coach_level_pref": task.structured_fields.get("coach_level_pref"),
+                            "created_at": task.created_at.isoformat(),
                         },
                     }
                     try:
