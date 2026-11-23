@@ -50,7 +50,7 @@ export default function CoachOrderDetailPage() {
         lng: 116.4,
       });
       invalidate();
-      // 签到成功后进入服务计时页
+      // 开始订单成功后进入服务计时页
       router.push(`/escort/coach/orders/${taskId}/service`);
     } finally {
       setActionLoading(false);
@@ -185,10 +185,10 @@ export default function CoachOrderDetailPage() {
           </div>
         )}
 
-        {/* 签到按钮（实时单 assigned 或 预约单 deal active + task assigned） */}
+        {/* 开始订单（实时单 assigned 或 预约单 deal active + task assigned） */}
         {order.status === "assigned" && (!isScheduled || deal?.status === "active") && (
           <Button className="w-full" onClick={handleCheckIn} disabled={actionLoading}>
-            {actionLoading ? "签到中..." : "签到"}
+            {actionLoading ? "开始订单中..." : "开始订单"}
           </Button>
         )}
         {order.status === "in_progress" && (

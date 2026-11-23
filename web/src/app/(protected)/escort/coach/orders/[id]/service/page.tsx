@@ -17,7 +17,7 @@ function formatClock(totalSeconds: number): string {
   return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
-/** 服务计时页：签到后展示实时计时，签退后进入结算页。 */
+/** 服务计时页：开始订单后展示实时计时，结束订单后进入结算页。 */
 export default function CoachServicePage() {
   const params = useParams();
   const router = useRouter();
@@ -57,7 +57,7 @@ export default function CoachServicePage() {
       invalidate();
       router.replace(`/escort/coach/orders/${taskId}/settlement`);
     } catch {
-      setError("签退失败，请重试");
+      setError("结束订单失败，请重试");
     } finally {
       setCheckingOut(false);
     }
@@ -87,7 +87,7 @@ export default function CoachServicePage() {
           </p>
           {order.check_in_at && (
             <p className="mt-3 text-xs text-gray-400">
-              签到时间：{new Date(order.check_in_at).toLocaleString("zh-CN")}
+              开始时间：{new Date(order.check_in_at).toLocaleString("zh-CN")}
             </p>
           )}
         </div>
@@ -121,10 +121,10 @@ export default function CoachServicePage() {
           onClick={handleCheckOut}
           disabled={checkingOut}
         >
-          {checkingOut ? "签退中..." : "签退"}
+          {checkingOut ? "结束订单中..." : "结束订单"}
         </Button>
         <p className="text-center text-xs text-gray-400">
-          服务结束后请点击签退，系统将生成本单结算单
+          服务结束后请点击结束订单，系统将生成本单结算单
         </p>
       </div>
     </div>

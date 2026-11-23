@@ -25,7 +25,7 @@ function formatTime(value: string | null | undefined): string {
   return date.toLocaleString("zh-CN");
 }
 
-/** 结算页：签退后展示服务时长与应付金额。 */
+/** 结算页：结束订单后展示服务时长与应付金额。 */
 export default function CoachSettlementPage() {
   const params = useParams();
   const router = useRouter();
@@ -78,11 +78,11 @@ export default function CoachSettlementPage() {
             <span>{formatCarType(order.car_type)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">签到时间</span>
+            <span className="text-gray-500">开始时间</span>
             <span>{formatTime(order.check_in_at)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">签退时间</span>
+            <span className="text-gray-500">结束时间</span>
             <span>{formatTime(order.check_out_at)}</span>
           </div>
           <div className="flex justify-between text-sm">
