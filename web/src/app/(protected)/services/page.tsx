@@ -21,6 +21,8 @@ export default function ServicesPage() {
 
   const escortHref =
     activeRole === "supplier" ? "/escort/coach" : "/escort/student";
+  // 个人主页：学员进入陪驾个人主页，教练仍回控制台
+  const homeHref = activeRole === "supplier" ? "/dashboard" : "/escort/student";
 
   const services: ServiceItem[] = [
     {
@@ -280,8 +282,8 @@ export default function ServicesPage() {
         </div>
 
         <div className="flex items-center justify-center gap-4">
-          <Button variant="link" className="text-sm" onClick={() => router.push("/dashboard")}>
-            我的账户
+          <Button variant="link" className="text-sm" onClick={() => router.push(homeHref)}>
+            个人主页
           </Button>
           <Button variant="link" className="text-sm" onClick={handleLogout}>
             退出登录

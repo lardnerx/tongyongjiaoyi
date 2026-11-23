@@ -45,6 +45,7 @@ web/src/app/(legal)/terms/page.tsx
 web/src/app/(legal)/privacy/page.tsx
 web/src/app/(legal)/about/page.tsx
 web/src/app/(protected)/dashboard/page.tsx
+web/src/app/(protected)/friends/page.tsx
 web/src/app/(protected)/services/page.tsx
 web/src/app/(protected)/escort/student/page.tsx
 web/src/app/(protected)/escort/student/book-instant/page.tsx

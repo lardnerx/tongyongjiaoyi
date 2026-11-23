@@ -86,6 +86,28 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
     onChangeRef.current({ lat, lng, address: label });
   };
 
+  /** 逆地理编码：优先取高德返回的详细地址，失败时回落为经纬度或兜底地址。 */
+  const applyWithGeocode = (lat: number, lng: number, fallbackAddress?: string) => {
+    const AMap = window.AMap;
+    let geocoder: any = null;
+    try {
+      geocoder = new AMap.Geocoder();
+    } catch {
+      geocoder = null;
+    }
+    if (!geocoder) {
+      applyLocation(lat, lng, fallbackAddress);
+      return;
+    }
+    geocoder.getAddress([lng, lat], (status: string, result: any) => {
+      const formatted =
+        status === "complete" && result?.info === "OK"
+          ? result?.regeocode?.formattedAddress
+          : "";
+      applyLocation(lat, lng, formatted || fallbackAddress);
+    });
+  };
+
   const handleSearch = () => {
     const AMap = window.AMap;
     const q = keyword.trim();
@@ -144,23 +166,7 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
           const lat = e.lnglat.getLat();
           placeMarker(lat, lng);
           // 逆地理编码（失败时回落为经纬度，保证一定能选到位置）
-          let geocoder: any = null;
-          try {
-            geocoder = new AMap.Geocoder();
-          } catch {
-            geocoder = null;
-          }
-          if (!geocoder) {
-            applyLocation(lat, lng);
-            return;
-          }
-          geocoder.getAddress([lng, lat], (status: string, result: any) => {
-            if (status === "complete" && result.info === "OK") {
-              applyLocation(lat, lng, result.regeocode.formattedAddress);
-            } else {
-              applyLocation(lat, lng);
-            }
-          });
+          applyWithGeocode(lat, lng);
         });
       })
       .catch(() => {
@@ -193,11 +199,10 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
       geolocation.getCurrentPosition((status: string, result: any) => {
         setLocating(false);
         if (status === "complete" && result.position) {
-          applyLocation(
-            result.position.lat,
-            result.position.lng,
-            result.formattedAddress
-          );
+          const lat = result.position.lat;
+          const lng = result.position.lng;
+          // 定位接口不一定返回 formattedAddress，统一再做一次逆地理编码
+          applyWithGeocode(lat, lng, result.formattedAddress);
         } else {
           setHint("未获取到定位，请点击地图手动选择");
         }

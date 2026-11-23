@@ -4,10 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFriends, useFriendRequests, useAcceptFriendRequest, useRejectFriendRequest, useRemoveFriend } from "@/hooks/use-friends";
 import { useWsEvent } from "@/hooks/use-ws-events";
+import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 
 export default function FriendsPage() {
   const router = useRouter();
+  const { activeRole } = useAuthStore();
+  // 返回陪驾个人主页（教练角色仍回控制台）
+  const backHref = activeRole === "supplier" ? "/dashboard" : "/escort/student";
   const [tab, setTab] = useState<"friends" | "requests">("friends");
 
   const { data: friends, isLoading: friendsLoading } = useFriends();
@@ -33,7 +37,7 @@ export default function FriendsPage() {
       <div className="mx-auto max-w-2xl space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">我的好友</h1>
-          <Button variant="ghost" onClick={() => router.push("/dashboard")}>返回</Button>
+          <Button variant="ghost" onClick={() => router.push(backHref)}>返回</Button>
         </div>
 
         {/* Tab 切换 */}
