@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 AVATAR_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "uploads" / "avatars"
 
 router = APIRouter()
+
+# 中国大陆手机号：1 开头，第二位 3-9，共 11 位数字
+CN_MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 
 
 def _ensure_avatar_dir() -> Path:
@@ -104,7 +108,10 @@ async def register(
     jwt_service: JwtService = Depends(get_jwt_service),
 ) -> Envelope[TokenResponse]:
     """手机号注册，返回 token 对（自动登录）。支持可选密码。"""
-    credential = Credential(type="phone", token=req.phone)
+    phone = req.phone.strip()
+    if not CN_MOBILE_PATTERN.fullmatch(phone):
+        raise InvalidCredentialError(message="请输入正确的 11 位大陆手机号")
+    credential = Credential(type="phone", token=phone)
     if req.password:
         credential.payload["password"] = req.password
     try:

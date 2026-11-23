@@ -252,6 +252,19 @@ class TestRegister:
         assert "refresh_token" in body["data"]
         assert body["data"]["token_type"] == "Bearer"
 
+    def test_register_with_invalid_mainland_phone_returns_401(self):
+        """非大陆 11 位手机号注册应被拒绝。"""
+        app = _make_app()
+        client = TestClient(app)
+        for bad_phone in ["12345", "1380000000", "12800000000", "138000000001", "+8613800000000"]:
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={"phone": bad_phone, "name": "非法手机号"},
+            )
+            assert resp.status_code == 401
+            assert resp.json()["code"] == 1001
+            assert "大陆手机号" in resp.json()["message"]
+
     def test_register_duplicate_phone_returns_401(self):
         app = _make_app()
         client = TestClient(app)
