@@ -15,7 +15,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, logout, setUser } = useAuthStore();
+  const { user, activeRole, logout, setUser } = useAuthStore();
+  // 客户返回服务列表，司机返回控制台
+  const homeHref = activeRole === "supplier" ? "/dashboard" : "/services";
 
   const handleLogout = async () => {
     try {
@@ -48,7 +50,7 @@ export default function ProfilePage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push(homeHref)}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -149,7 +151,7 @@ export default function ProfilePage() {
             <Button
               variant="outline"
               className="w-full justify-start"
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push(homeHref)}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

@@ -285,6 +285,9 @@ export default function ServicesPage() {
           <Button variant="link" className="text-sm" onClick={() => router.push(homeHref)}>
             个人主页
           </Button>
+          <Button variant="link" className="text-sm" onClick={() => router.push("/profile")}>
+            我的
+          </Button>
           <Button variant="link" className="text-sm" onClick={handleLogout}>
             退出登录
           </Button>

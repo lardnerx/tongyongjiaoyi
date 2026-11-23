@@ -41,6 +41,12 @@ export default function EscortStudentHomePage() {
       description: "查看司机好友",
       href: "/friends",
     },
+    {
+      key: "profile",
+      label: "我的",
+      description: "个人信息、头像与账号设置",
+      href: "/profile",
+    },
   ];
 
   return (
