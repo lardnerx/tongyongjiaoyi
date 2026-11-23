@@ -15,7 +15,12 @@ from umcp_core.events.bus import Event
 from umcp_core.events.types import EventType
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
-from umcp_core.transport.errors import IllegalStateError, NotFoundError, PermissionDeniedError
+from umcp_core.transport.errors import (
+    IllegalStateError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from umcp_core.transport.schemas import Envelope, ok
 from plugins.escort_driving.tasks import EscortTask
 
@@ -277,12 +282,20 @@ async def create_order(
 
 @router.get("/orders", response_model=Envelope)
 async def list_orders(
-    demander_id: str = Query(...),
+    demander_id: str | None = Query(None),
+    coach_id: str | None = Query(None),
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """查询学员订单列表（按下单时间倒序，新单在前）。"""
-    tasks = server.task_repo.find_by_demander(demander_id)
+    """查询订单列表：学员按下单者查，司机按接单者查（均按下单时间倒序）。"""
+    if coach_id:
+        tasks = [
+            t for t in server.task_repo.list_all() if t.assigned_resource_id == coach_id
+        ]
+    elif demander_id:
+        tasks = server.task_repo.find_by_demander(demander_id)
+    else:
+        raise ValidationError(message="demander_id 或 coach_id 至少提供一个")
     orders = [_task_to_order_info(t).model_dump() for t in tasks]
     orders.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return ok(data=orders)
