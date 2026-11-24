@@ -14,11 +14,12 @@ export function useOrders(demanderId: string | undefined) {
   });
 }
 
-export function useOrder(taskId: string | undefined) {
+export function useOrder(taskId: string | undefined, refetchInterval = 0) {
   return useQuery({
     queryKey: ["order", taskId],
     queryFn: () => apiClient.get<OrderInfo>(`/escort/orders/${taskId}`),
     enabled: !!taskId,
+    refetchInterval: refetchInterval > 0 ? refetchInterval : false,
   });
 }
 

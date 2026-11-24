@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
@@ -18,15 +18,45 @@ import { Button } from "@/components/ui/button";
 import type { OrderStatus } from "@/types/escort";
 import { formatCarType, formatEstimate, unitPriceOf } from "@/types/escort";
 
+/** 秒数转 HH:MM:SS。 */
+function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
 export default function StudentOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuthStore();
   const taskId = params.id as string;
-  const { data: order, isLoading } = useOrder(taskId);
+  // 轮询兜底：WS 断线时也能在 10 秒内同步司机开始/结束服务
+  const { data: order, isLoading } = useOrder(taskId, 10_000);
   const { data: reviews } = useReviews(taskId);
   const invalidate = useInvalidateOrder(taskId);
   const { orderStatusUpdates } = useOrderRealtimeStore();
+
+  // 司机开始服务时弹窗提示；计时与司机端同步（都基于 check_in_at）
+  const [showStarted, setShowStarted] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const prevStatusRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const status = order?.status;
+    if (status) {
+      if (prevStatusRef.current && prevStatusRef.current !== "in_progress" && status === "in_progress") {
+        setShowStarted(true);
+      }
+      prevStatusRef.current = status;
+    }
+  }, [order?.status]);
 
   // 预约单：查询 deal 和 payment
   const dealId = order?.deal_id ?? undefined;
@@ -35,7 +65,10 @@ export default function StudentOrderDetailPage() {
 
   // WS 事件 → 刷新
   useWsEvent("task.assigned", () => invalidate());
-  useWsEvent("task.in_service", () => invalidate());
+  useWsEvent("task.in_service", () => {
+    invalidate();
+    setShowStarted(true);
+  });
   useWsEvent("task.completed", () => invalidate());
   useWsEvent("task.cancelled", () => invalidate());
   useWsEvent("deal.confirmed", () => invalidate());
@@ -55,6 +88,12 @@ export default function StudentOrderDetailPage() {
 
   if (isLoading) return <div className="p-4">加载中...</div>;
   if (!order) return <div className="p-4">订单不存在</div>;
+
+  const checkInMs = order.check_in_at ? Date.parse(order.check_in_at) : null;
+  const elapsedSeconds =
+    checkInMs !== null && !Number.isNaN(checkInMs)
+      ? Math.max(0, (now - checkInMs) / 1000)
+      : 0;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -129,6 +168,21 @@ export default function StudentOrderDetailPage() {
           <p className="text-xs text-gray-400">
             预估价格按 {unitPriceOf(order.car_type)} 元/小时 × {order.duration_hours} 小时估算，实际以订单结算为准。
           </p>
+        )}
+
+        {/* 司机已开始服务：与司机端同步计时 */}
+        {currentStatus === "in_progress" && (
+          <div className="rounded-lg bg-gray-900 p-5 text-center text-white">
+            <p className="text-xs text-gray-400">司机已开始服务</p>
+            <p className="mt-1 font-mono text-3xl font-bold tracking-wider">
+              {formatClock(elapsedSeconds)}
+            </p>
+            {order.check_in_at && (
+              <p className="mt-2 text-xs text-gray-400">
+                开始时间：{new Date(order.check_in_at).toLocaleString("zh-CN")}
+              </p>
+            )}
+          </div>
         )}
 
         {/* 实时单：等待接单 */}
@@ -241,6 +295,33 @@ export default function StudentOrderDetailPage() {
           }}
           onClose={() => setShowCancelDialog(false)}
         />
+
+        {/* 司机开始服务弹窗 */}
+        {showStarted && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-sm rounded-xl bg-white p-6 text-center shadow-xl">
+              <p className="text-lg font-bold">司机已开始服务</p>
+              <p className="mt-1 text-sm text-gray-500">
+                计时已开始，与司机端同步
+              </p>
+              <p className="mt-4 font-mono text-4xl font-bold tracking-wider">
+                {formatClock(elapsedSeconds)}
+              </p>
+              {order.check_in_at && (
+                <p className="mt-2 text-xs text-gray-400">
+                  开始时间：{new Date(order.check_in_at).toLocaleString("zh-CN")}
+                </p>
+              )}
+              <Button className="mt-5 w-full" onClick={() => setShowStarted(false)}>
+                知道了
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
