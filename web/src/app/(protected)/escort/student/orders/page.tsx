@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrders } from "@/hooks/use-orders";
 import { apiClient } from "@/lib/api-client";
+import { playSuccessTone, speak } from "@/lib/notification-sound";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Button } from "@/components/ui/button";
 import { formatCarType, formatEstimate } from "@/types/escort";
@@ -34,6 +35,8 @@ export default function StudentOrdersPage() {
     try {
       await apiClient.post(`/escort/orders/${taskId}/confirm`, {});
       await queryClient.invalidateQueries({ queryKey: ["orders", user?.user_id] });
+      playSuccessTone();
+      speak("支付成功");
     } catch {
       setPayError("确认支付失败，请重试");
     } finally {

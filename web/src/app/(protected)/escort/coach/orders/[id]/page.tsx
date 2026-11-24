@@ -11,6 +11,7 @@ import { OrderStatusBadge } from "@/components/order-status-badge";
 import { ReviewForm } from "@/components/review-form";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
+import { playSuccessTone, speak } from "@/lib/notification-sound";
 import type { OrderStatus } from "@/types/escort";
 import { formatCarType } from "@/types/escort";
 
@@ -50,6 +51,8 @@ export default function CoachOrderDetailPage() {
         lng: 116.4,
       });
       invalidate();
+      playSuccessTone();
+      speak("订单已开始");
       // 开始订单成功后进入服务计时页
       router.push(`/escort/coach/orders/${taskId}/service`);
     } finally {

@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { apiClient } from "@/lib/api-client";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
+import {
+  isSoundEnabled,
+  notifyNewOrder,
+  playAlertTone,
+  playSuccessTone,
+  setSoundEnabled,
+  speak,
+} from "@/lib/notification-sound";
 import { MapView } from "@/components/map-view";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
@@ -40,6 +48,32 @@ export default function CoachHallPage() {
   const [mapMode, setMapMode] = useState(false);
   const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(null);
   const { claimedOrderIds } = useOrderRealtimeStore();
+  // 新单弹窗与提示音开关
+  const [soundOn, setSoundOn] = useState(true);
+  const [orderToast, setOrderToast] = useState<{
+    order: OrderWithLocation;
+    count: number;
+  } | null>(null);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const initialLoadedRef = useRef(false);
+
+  useEffect(() => {
+    setSoundOn(isSoundEnabled());
+  }, []);
+
+  // 弹窗 8 秒后自动关闭
+  useEffect(() => {
+    if (!orderToast) return;
+    const timer = setTimeout(() => setOrderToast(null), 8000);
+    return () => clearTimeout(timer);
+  }, [orderToast]);
+
+  /** 新订单提示：弹窗 + 提示音 + 语音播报（首次加载不提示）。 */
+  const announceNewOrders = useCallback((fresh: OrderWithLocation[]) => {
+    if (fresh.length === 0) return;
+    setOrderToast({ order: fresh[0], count: fresh.length });
+    notifyNewOrder();
+  }, []);
 
   // 教练上线
   useEffect(() => {
@@ -82,6 +116,13 @@ export default function CoachHallPage() {
       try {
         const list = await apiClient.get<OrderWithLocation[]>("/escort/orders/available");
         if (cancelled || !Array.isArray(list)) return;
+        // 找出本次拉取中新增的订单，用于弹窗与语音提示
+        const fresh = list.filter((o) => !knownIdsRef.current.has(o.task_id));
+        list.forEach((o) => knownIdsRef.current.add(o.task_id));
+        if (initialLoadedRef.current && fresh.length > 0) {
+          announceNewOrders(fresh as OrderWithLocation[]);
+        }
+        initialLoadedRef.current = true;
         setPendingOrders((prev) => {
           const merged = new Map(prev.map((o) => [o.task_id, o]));
           for (const order of list) {
@@ -99,7 +140,7 @@ export default function CoachHallPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [announceNewOrders]);
 
   // WS 收到新订单
   const handleNewOrder = useCallback((data: Record<string, unknown>) => {
@@ -118,7 +159,12 @@ export default function CoachHallPage() {
       origin_lng: data.origin_lng as number | undefined,
     };
     setPendingOrders((prev) => [newOrder, ...prev]);
-  }, []);
+    // 已通过轮询见过该单时不再重复提示
+    if (!knownIdsRef.current.has(newOrder.task_id)) {
+      knownIdsRef.current.add(newOrder.task_id);
+      announceNewOrders([newOrder]);
+    }
+  }, [announceNewOrders]);
 
   useWsEvent("task.published", handleNewOrder);
 
@@ -135,6 +181,8 @@ export default function CoachHallPage() {
       await apiClient.post(`/escort/orders/${taskId}/claim`, {
         coach_id: user?.user_id,
       });
+      playSuccessTone();
+      speak("抢单成功");
       router.push(`/escort/coach/orders/${taskId}`);
     } catch (e: any) {
       setError(e.message || "抢单失败");
@@ -163,6 +211,18 @@ export default function CoachHallPage() {
           <h1 className="text-2xl font-bold">接单大厅</h1>
           <div className="flex gap-2">
             <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const next = !soundOn;
+                setSoundOn(next);
+                setSoundEnabled(next);
+                if (next) playAlertTone();
+              }}
+            >
+              {soundOn ? "提示音开" : "提示音关"}
+            </Button>
+            <Button
               variant={mapMode ? "default" : "ghost"}
               size="sm"
               onClick={() => setMapMode(!mapMode)}
@@ -176,6 +236,40 @@ export default function CoachHallPage() {
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}
+
+        {/* 新订单弹窗提示 */}
+        {orderToast && (
+          <div className="fixed left-1/2 top-4 z-50 w-[92%] max-w-sm -translate-x-1/2 rounded-xl border border-amber-300 bg-white p-4 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-amber-600">
+                  {orderToast.count > 1
+                    ? `有 ${orderToast.count} 个新订单`
+                    : "新订单"}
+                </p>
+                <p className="mt-1 truncate text-sm text-gray-700">
+                  起点：{orderToast.order.origin_address || "未提供"}
+                </p>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {formatCarType(orderToast.order.car_type)} ·{" "}
+                  {orderToast.order.duration_hours} 小时 ·{" "}
+                  {formatEstimate(
+                    orderToast.order.car_type,
+                    orderToast.order.duration_hours
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭提示"
+                className="text-lg leading-none text-gray-400"
+                onClick={() => setOrderToast(null)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 地图模式 */}
         {mapMode && (

@@ -9,6 +9,7 @@ import { useSendFriendRequest } from "@/hooks/use-friends";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
 import { apiClient } from "@/lib/api-client";
+import { speak } from "@/lib/notification-sound";
 import { useCancelRules } from "@/hooks/use-cancel-rules";
 import { CountdownTimer } from "@/components/countdown-timer";
 import { CancelDialog } from "@/components/cancel-dialog";
@@ -53,6 +54,10 @@ export default function StudentOrderDetailPage() {
     if (status) {
       if (prevStatusRef.current && prevStatusRef.current !== "in_progress" && status === "in_progress") {
         setShowStarted(true);
+        speak("司机已开始服务");
+      }
+      if (prevStatusRef.current && prevStatusRef.current !== "completed" && status === "completed") {
+        speak("服务已完成，请确认支付");
       }
       prevStatusRef.current = status;
     }

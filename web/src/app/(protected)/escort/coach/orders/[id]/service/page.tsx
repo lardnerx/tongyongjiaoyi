@@ -6,6 +6,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useInvalidateOrder } from "@/hooks/use-orders";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
+import { playSuccessTone, speak } from "@/lib/notification-sound";
 import { formatCarType } from "@/types/escort";
 
 /** 秒数转 HH:MM:SS。 */
@@ -55,6 +56,8 @@ export default function CoachServicePage() {
         lng: 116.4,
       });
       invalidate();
+      playSuccessTone();
+      speak("订单已结束");
       router.replace(`/escort/coach/orders/${taskId}/settlement`);
     } catch {
       setError("结束订单失败，请重试");
