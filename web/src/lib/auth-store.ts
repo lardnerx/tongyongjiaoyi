@@ -15,7 +15,12 @@ interface AuthState {
   logout: () => void;
 }
 
-const secure = () => (process.env.NODE_ENV === "production" ? "; secure" : "");
+// 仅在 HTTPS 页面写入 Secure，避免通过 HTTP（如 IP 直连）访问时
+// 浏览器丢弃 Cookie，导致中间件读不到登录态而反复跳回登录页
+const secure = () =>
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? "; secure"
+    : "";
 
 // WebSocket 地址：默认与当前页面同源（生产 wss://域名，开发 ws://localhost:8000），
 // 避免打包进 ws://localhost:8000 导致浏览器去连访客自己的机器。
@@ -77,6 +82,12 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         // 页面刷新后，从持久化恢复时初始化 WebSocket
         if (state?.accessToken) {
+          // 同步补齐 Cookie：避免 Cookie 过期/丢失后中间件把已登录用户
+          // 重新跳回登录页（移动端浏览器尤为常见）
+          document.cookie = `auth-token=${state.accessToken}; path=/; max-age=3600; samesite=lax${secure()}`;
+          if (state.activeRole) {
+            document.cookie = `active-role=${state.activeRole}; path=/; max-age=3600; samesite=lax${secure()}`;
+          }
           wsClient.init(resolveWsUrl(), state.accessToken);
         }
       },

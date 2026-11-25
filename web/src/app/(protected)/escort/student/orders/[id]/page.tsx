@@ -278,8 +278,10 @@ export default function StudentOrderDetailPage() {
           </Button>
         )}
 
-        {/* 取消按钮（非终态均可显示） */}
-        {currentStatus !== "completed" && currentStatus !== "cancelled" && (
+        {/* 取消按钮（服务开始前可取消） */}
+        {currentStatus !== "in_progress" &&
+          currentStatus !== "completed" &&
+          currentStatus !== "cancelled" && (
           <Button
             variant="outline"
             className="w-full text-red-600 border-red-300"

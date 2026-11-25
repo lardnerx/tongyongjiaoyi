@@ -357,6 +357,35 @@ def test_list_available_orders(authed_client):
     assert target["origin_lng"] == 116.4074
 
 
+def test_cancel_order_rejected_after_service_started(authed_client):
+    """服务已开始的订单不允许客户取消。"""
+    uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
+    create_resp = authed_client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": uid,
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "AUTO",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = create_resp.json()["data"]["task_id"]
+    authed_client.post(f"/api/v1/escort/orders/{task_id}/claim", json={"coach_id": uid})
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+
+    resp = authed_client.post(f"/api/v1/escort/orders/{task_id}/cancel")
+    assert resp.status_code >= 400
+    detail = authed_client.get(f"/api/v1/escort/orders/{task_id}").json()["data"]
+    assert detail["status"] == "in_progress"
+
+
 def test_pick_coaches_for_order_filters_by_radius():
     """实时单首轮只推半径内在线教练；半径 <=0 时退化为全量在线教练。"""
     from types import SimpleNamespace

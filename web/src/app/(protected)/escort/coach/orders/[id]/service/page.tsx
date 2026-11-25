@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useInvalidateOrder } from "@/hooks/use-orders";
+import { useWsEvent } from "@/hooks/use-ws-events";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { playSuccessTone, speak } from "@/lib/notification-sound";
@@ -24,16 +25,23 @@ export default function CoachServicePage() {
   const router = useRouter();
   const taskId = params.id as string;
   const { user } = useAuthStore();
-  const { data: order, isLoading } = useOrder(taskId);
+  // 轮询兜底：客户取消订单后即使错过 WS 推送也能在 10 秒内感知
+  const { data: order, isLoading } = useOrder(taskId, 10_000);
   const invalidate = useInvalidateOrder(taskId);
   const [now, setNow] = useState(() => Date.now());
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState("");
 
+  useWsEvent("task.cancelled", () => invalidate());
+  useWsEvent("task.completed", () => invalidate());
+
+  const cancelled = order?.status === "cancelled";
+
   useEffect(() => {
+    if (cancelled) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [cancelled]);
 
   // 已完成订单直接进入结算页
   useEffect(() => {
@@ -47,6 +55,7 @@ export default function CoachServicePage() {
     startMs !== null && !Number.isNaN(startMs) ? (now - startMs) / 1000 : 0;
 
   const handleCheckOut = async () => {
+    if (cancelled) return;
     setCheckingOut(true);
     setError("");
     try {
@@ -59,8 +68,8 @@ export default function CoachServicePage() {
       playSuccessTone();
       speak("订单已结束");
       router.replace(`/escort/coach/orders/${taskId}/settlement`);
-    } catch {
-      setError("结束订单失败，请重试");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "结束订单失败，请重试");
     } finally {
       setCheckingOut(false);
     }
@@ -117,18 +126,39 @@ export default function CoachServicePage() {
           </div>
         </div>
 
+        {cancelled && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="font-medium text-red-700">订单已被客户取消</p>
+            <p className="mt-1 text-sm text-red-600">
+              服务已终止，计时已停止，无需再结束订单。
+            </p>
+          </div>
+        )}
+
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <Button
-          className="w-full"
-          onClick={handleCheckOut}
-          disabled={checkingOut}
-        >
-          {checkingOut ? "结束订单中..." : "结束订单"}
-        </Button>
-        <p className="text-center text-xs text-gray-400">
-          服务结束后请点击结束订单，系统将生成本单结算单
-        </p>
+        {cancelled ? (
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => router.push(`/escort/coach/orders/${taskId}`)}
+          >
+            返回订单详情
+          </Button>
+        ) : (
+          <>
+            <Button
+              className="w-full"
+              onClick={handleCheckOut}
+              disabled={checkingOut}
+            >
+              {checkingOut ? "结束订单中..." : "结束订单"}
+            </Button>
+            <p className="text-center text-xs text-gray-400">
+              服务结束后请点击结束订单，系统将生成本单结算单
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

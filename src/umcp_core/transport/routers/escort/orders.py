@@ -391,6 +391,11 @@ async def cancel_order(
         raise NotFoundError(message=f"订单 {task_id} 不存在")
     if task.demander_id != current_user.user_id:
         raise PermissionDeniedError(message="只能取消自己的订单")
+    # 服务已开始或已结束的订单不允许取消，避免司机服务中被单方面终止
+    if task.status == TaskStatus.IN_PROGRESS:
+        raise IllegalStateError(message="订单已开始服务，不能取消")
+    if task.status == TaskStatus.COMPLETED:
+        raise IllegalStateError(message="订单已完成，不能取消")
 
     rule_config = getattr(server, "rule_config", None)
     penalty = 0.0
