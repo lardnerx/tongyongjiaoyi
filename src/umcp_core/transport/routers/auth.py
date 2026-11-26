@@ -34,13 +34,12 @@ router = APIRouter()
 # 中国大陆手机号：1 开头，第二位 3-9，共 11 位数字
 CN_MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 
-# 注册可选身份：客户（发出订单）/ 司机（接单）
+# 注册可选身份：需求方（发出订单）/ 供给方（接单）
 REGISTER_ROLE_ALIASES = {
     "demander": "demander",
     "member": "demander",
     "customer": "demander",
     "supplier": "supplier",
-    "driver": "supplier",
 }
 
 

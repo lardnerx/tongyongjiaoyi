@@ -52,10 +52,10 @@ _CALLBACK_TIMESTAMP_WINDOW = 300  # 5 分钟，允许的时间偏差
 _CALLBACK_NONCE_CACHE_TTL = 600  # nonce 缓存过期时间（10 分钟）
 
 _DESCRIPTION_MAP: dict[PaymentType, str] = {
-    PaymentType.DEPOSIT: "陪驾定金",
-    PaymentType.BALANCE: "陪驾尾款",
-    PaymentType.FULL: "陪驾全额支付",
-    PaymentType.REFUND: "陪驾退款",
+    PaymentType.DEPOSIT: "订单定金",
+    PaymentType.BALANCE: "订单尾款",
+    PaymentType.FULL: "订单全额支付",
+    PaymentType.REFUND: "订单退款",
 }
 
 

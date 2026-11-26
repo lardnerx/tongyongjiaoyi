@@ -88,13 +88,12 @@ def task_from_orm(model: TaskModel) -> Task:
     if isinstance(task, StandardTask):
         task.structured_fields = structured_fields
 
-    # 插件自定义任务（如 escort）在通用仓储中按 StandardTask 还原，
-    # 补齐插件扩展属性，否则读取 order_type / scheduled_at 等字段会抛 AttributeError
+    # 插件自定义任务在通用仓储中按 StandardTask 还原，补齐通用扩展属性，
+    # 否则读取 order_type / scheduled_at 等字段会抛 AttributeError。
+    # 插件专有字段统一保留在 structured_fields 中，由插件自行读取。
     if model.task_type not in _TASK_TYPE_REGISTRY:
         if structured_fields.get("order_type"):
             task.order_type = structured_fields["order_type"]
-        if structured_fields.get("coach_level_pref"):
-            task.coach_level_pref = structured_fields["coach_level_pref"]
         if structured_fields.get("scheduled_at"):
             try:
                 task.scheduled_at = datetime.fromisoformat(structured_fields["scheduled_at"])

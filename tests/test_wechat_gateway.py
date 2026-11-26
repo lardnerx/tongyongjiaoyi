@@ -204,7 +204,7 @@ class TestCreatePayment:
         body = json.loads(call_args[1]["content"])
         assert body["appid"] == "test_app_id"
         assert body["mchid"] == "test_mch_id"
-        assert body["description"] == "陪驾定金"
+        assert body["description"] == "订单定金"
         assert body["amount"]["total"] == 10000
         assert body["amount"]["currency"] == "CNY"
         assert "Authorization" in call_args[1]["headers"]
@@ -236,7 +236,7 @@ class TestCreatePayment:
 
         intent = wechat_gateway.create_payment("deal_1", 200.0, PaymentType.BALANCE)
         body = json.loads(mock_request.call_args[1]["content"])
-        assert body["description"] == "陪驾尾款"
+        assert body["description"] == "订单尾款"
         assert body["amount"]["total"] == 20000
 
     @patch("httpx.request")
@@ -247,7 +247,7 @@ class TestCreatePayment:
 
         intent = wechat_gateway.create_payment("deal_1", 500.0, PaymentType.FULL)
         body = json.loads(mock_request.call_args[1]["content"])
-        assert body["description"] == "陪驾全额支付"
+        assert body["description"] == "订单全额支付"
         assert body["amount"]["total"] == 50000
 
 
@@ -752,7 +752,7 @@ class TestDescriptionMapping:
         from umcp_core.shared.payment.base import PaymentType
         from umcp_core.shared.payment.wechat import _DESCRIPTION_MAP
         fallback = _DESCRIPTION_MAP.get(PaymentType.REFUND, "通用支付")
-        assert fallback == "陪驾退款"
+        assert fallback == "订单退款"
 
 
 # ============================================================

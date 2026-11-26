@@ -111,7 +111,7 @@ class TestTaskConverter:
         assert restored.structured_fields["car_type"] == "manual"
         assert restored.structured_fields["duration_hours"] == 2
         assert restored.order_type == "SCHEDULED"
-        assert restored.coach_level_pref == "ANY"
+        assert restored.structured_fields["coach_level_pref"] == "ANY"
         assert restored.scheduled_at == dt(2026, 8, 15, 10, 0, 0)
         # 保留键不应泄漏到 custom_fields
         assert restored.custom_fields == {"actual_hours": 2}
