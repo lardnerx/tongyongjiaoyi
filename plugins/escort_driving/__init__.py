@@ -103,6 +103,12 @@ def register_plugin(server: "UMCPServer") -> None:
         event_bus=server.event_bus,
     )
     logger.info("支付仓储: %s", type(server.payment_service.repo).__name__)
+    # 评价仓储：生产环境使用 server 注入的持久化仓储；未注入时回退内存实现
+    from umcp_core.shared.review.repository import InMemoryReviewRepository
+
+    if getattr(server, "review_repo", None) is None:
+        server.review_repo = InMemoryReviewRepository()
+    logger.info("评价仓储: %s", type(server.review_repo).__name__)
     # 注册规则配置中心（持久化仓储 + 默认值预加载，挂载到 server.rule_config）
     from umcp_core.shared.rules.config import RuleConfig
     from umcp_core.shared.rules.repository import InMemoryRuleRepository

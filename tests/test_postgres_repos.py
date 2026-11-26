@@ -727,3 +727,89 @@ class TestPostgresNotificationRepository:
         rows = new_repo.list_by_user("u1")
         assert len(rows) == 1
         assert rows[0]["title"] == "重启前"
+
+
+class TestPostgresReviewRepository:
+    """评价仓储：落库、按订单查询、唯一约束。"""
+
+    def test_save_and_find_by_task(self, pg_bundle):
+        repo = pg_bundle.review_repo
+        repo.save(
+            {
+                "review_id": "rev_1",
+                "task_id": "task_1",
+                "reviewer_id": "u1",
+                "reviewer_role": "STUDENT",
+                "evaluatee_id": "coach_1",
+                "ratings": {"overall": 5},
+                "comment": "好评",
+            }
+        )
+        repo.save(
+            {
+                "review_id": "rev_2",
+                "task_id": "task_1",
+                "reviewer_id": "coach_1",
+                "reviewer_role": "COACH",
+                "evaluatee_id": "u1",
+                "ratings": {"overall": 4},
+                "comment": "守时",
+            }
+        )
+        repo.save(
+            {
+                "review_id": "rev_3",
+                "task_id": "task_2",
+                "reviewer_id": "u2",
+                "reviewer_role": "STUDENT",
+                "evaluatee_id": "coach_2",
+                "ratings": {},
+                "comment": "",
+            }
+        )
+
+        rows = repo.find_by_task("task_1")
+        assert [r["reviewer_role"] for r in rows] == ["STUDENT", "COACH"]
+        assert rows[0]["ratings"] == {"overall": 5}
+        assert repo.find_by_task("task_missing") == []
+        assert repo.find_by_id("rev_3")["task_id"] == "task_2"
+
+    def test_duplicate_role_rejected(self, pg_bundle):
+        import pytest
+
+        repo = pg_bundle.review_repo
+        record = {
+            "review_id": "rev_dup_1",
+            "task_id": "task_dup",
+            "reviewer_id": "u1",
+            "reviewer_role": "STUDENT",
+            "evaluatee_id": "coach_1",
+            "ratings": {"overall": 5},
+            "comment": "",
+        }
+        repo.save(record)
+        with pytest.raises(ValueError):
+            repo.save({**record, "review_id": "rev_dup_2"})
+        assert len(repo.find_by_task("task_dup")) == 1
+
+    def test_review_survives_new_repository_instance(self, pg_bundle):
+        """模拟重启：新仓储实例仍可读到历史评价。"""
+        from umcp_core.shared.review.repository import PostgresReviewRepository
+
+        pg_bundle.review_repo.save(
+            {
+                "review_id": "rev_persist",
+                "task_id": "task_persist",
+                "reviewer_id": "u1",
+                "reviewer_role": "STUDENT",
+                "evaluatee_id": "coach_1",
+                "ratings": {"overall": 5},
+                "comment": "重启前",
+            }
+        )
+
+        new_repo = PostgresReviewRepository(pg_bundle.SessionFactory)
+        rows = new_repo.find_by_task("task_persist")
+        assert len(rows) == 1
+        assert rows[0]["comment"] == "重启前"
+

@@ -25,6 +25,7 @@ from umcp_core.shared.notification.repository import (  # noqa: F401  导入以�
 )
 from umcp_core.shared.rules.repository import PostgresRuleRepository
 from umcp_core.shared.payment.repository import PostgresPaymentRepository
+from umcp_core.shared.review.repository import PostgresReviewRepository
 
 
 class PostgresRepositoryBundle:
@@ -66,6 +67,7 @@ class PostgresRepositoryBundle:
         self.rule_repo = PostgresRuleRepository(self.SessionFactory)
         self.payment_repo = PostgresPaymentRepository(self.SessionFactory)
         self.notification_repo = PostgresNotificationRepository(self.SessionFactory)
+        self.review_repo = PostgresReviewRepository(self.SessionFactory)
 
     @contextmanager
     def transaction(self) -> Session:

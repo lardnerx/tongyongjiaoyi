@@ -243,3 +243,90 @@ def test_non_participant_review_fails(client_and_server):
         headers=_auth_headers(server, "u_outsider"),
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 持久化：评价必须落 Repository，而不是模块级内存字典
+# ---------------------------------------------------------------------------
+
+
+def test_review_is_persisted_in_repository(client_and_server):
+    """提交评价后可从 server.review_repo 读到完整记录。"""
+    from datetime import datetime
+
+    client, server = client_and_server
+    task_id = _create_completed_order(client, server)
+    client.post(
+        f"/api/v1/escort/orders/{task_id}/reviews",
+        json={
+            "reviewer_id": "u1",
+            "reviewer_role": "STUDENT",
+            "ratings": {"teaching_score": 5, "patience_score": 4},
+            "comment": "教练很专业",
+        },
+        headers=_auth_headers(server, "u1"),
+    )
+
+    records = server.review_repo.find_by_task(task_id)
+    assert len(records) == 1
+    record = records[0]
+    assert record["reviewer_id"] == "u1"
+    assert record["evaluatee_id"] == "coach_1"
+    assert record["reviewer_role"] == "STUDENT"
+    assert record["ratings"]["teaching_score"] == 5
+    assert isinstance(record["created_at"], datetime)
+
+
+def test_reviews_are_shared_across_app_instances(client_and_server):
+    """评价存在仓储里：同一 server 重新建 app 仍能读到（模拟进程重启后读库）。"""
+    from fastapi.testclient import TestClient
+
+    from umcp_core.transport.app import create_app
+    from umcp_core.transport.config import TransportConfig
+
+    client, server = client_and_server
+    task_id = _create_completed_order(client, server)
+    client.post(
+        f"/api/v1/escort/orders/{task_id}/reviews",
+        json={
+            "reviewer_id": "u1",
+            "reviewer_role": "STUDENT",
+            "ratings": {"teaching_score": 5},
+            "comment": "好评",
+        },
+        headers=_auth_headers(server, "u1"),
+    )
+
+    new_client = TestClient(create_app(server, TransportConfig(jwt_secret="test-secret")))
+    resp = new_client.get(
+        f"/api/v1/escort/orders/{task_id}/reviews",
+        headers=_auth_headers(server, "u1"),
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data) == 1
+    assert data[0]["comment"] == "好评"
+    assert data[0]["created_at"].endswith("+00:00")
+
+
+def test_in_memory_review_repository_rejects_duplicate_role():
+    """仓储层兜底唯一约束：同一订单同一角色只能评价一次。"""
+    import pytest
+
+    from umcp_core.shared.review.repository import InMemoryReviewRepository
+
+    repo = InMemoryReviewRepository()
+    base = {
+        "review_id": "rev_1",
+        "task_id": "task_1",
+        "reviewer_id": "u1",
+        "reviewer_role": "STUDENT",
+        "evaluatee_id": "coach_1",
+        "ratings": {"overall": 5},
+        "comment": "",
+    }
+    repo.save(dict(base))
+    with pytest.raises(ValueError):
+        repo.save({**base, "review_id": "rev_2"})
+    assert len(repo.find_by_task("task_1")) == 1
+

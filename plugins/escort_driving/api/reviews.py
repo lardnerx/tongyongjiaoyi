@@ -1,9 +1,9 @@
 """陪驾评价 router（双向评价）。"""
 from __future__ import annotations
 
-import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -19,25 +19,23 @@ from umcp_core.transport.schemas import Envelope, ok
 
 router = APIRouter(prefix="/api/v1/escort", tags=["escort-reviews"])
 
-# 内存存储（MVP 阶段，后续迁移到 ORM）
-_reviews_store: dict[str, list[dict]] = {}
-_review_locks: dict[str, threading.Lock] = {}
-_review_locks_guard = threading.Lock()
-
-
-def _get_review_lock(task_id: str) -> threading.Lock:
-    """获取指定 task_id 的评价锁（线程安全）。"""
-    with _review_locks_guard:
-        if task_id not in _review_locks:
-            _review_locks[task_id] = threading.Lock()
-        return _review_locks[task_id]
-
 
 class ReviewRequest(BaseModel):
     reviewer_id: str
     reviewer_role: str  # STUDENT | COACH
     ratings: dict[str, float]
     comment: str = ""
+
+
+def _to_api(record: dict[str, Any]) -> dict[str, Any]:
+    """仓储记录转 HTTP 出参：created_at 统一序列化为带时区的 ISO 字符串。"""
+    item = dict(record)
+    created_at = item.get("created_at")
+    if isinstance(created_at, datetime):
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        item["created_at"] = created_at.isoformat()
+    return item
 
 
 @router.post("/orders/{task_id}/reviews", response_model=Envelope)
@@ -47,7 +45,7 @@ async def create_review(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """提交评价。"""
+    """提交评价（持久化到 review_repo）。"""
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
@@ -70,26 +68,26 @@ async def create_review(
             raise PermissionDeniedError(message="只有该订单的教练才能以教练身份评价")
         evaluatee_id = task.demander_id
 
-    # 检查重复评价 + 写入（per-task_id 锁，避免 TOCTOU 竞态）
-    with _get_review_lock(task_id):
-        existing = _reviews_store.get(task_id, [])
-        for r in existing:
-            if r["reviewer_role"] == req.reviewer_role:
-                raise IllegalStateError(message="该角色已评价过此订单")
+    # 同一角色每个订单只能评价一次（仓储层唯一约束兜底并发）
+    existing = server.review_repo.find_by_task(task_id)
+    for r in existing:
+        if r["reviewer_role"] == req.reviewer_role:
+            raise IllegalStateError(message="该角色已评价过此订单")
 
-        review_id = f"rev_{uuid.uuid4().hex[:12]}"
-        now = datetime.utcnow().isoformat()
-        review = {
-            "review_id": review_id,
-            "task_id": task_id,
-            "reviewer_id": req.reviewer_id,
-            "reviewer_role": req.reviewer_role,
-            "evaluatee_id": evaluatee_id,
-            "ratings": req.ratings,
-            "comment": req.comment,
-            "created_at": now,
-        }
-        _reviews_store.setdefault(task_id, []).append(review)
+    review = {
+        "review_id": f"rev_{uuid.uuid4().hex[:12]}",
+        "task_id": task_id,
+        "reviewer_id": req.reviewer_id,
+        "reviewer_role": req.reviewer_role,
+        "evaluatee_id": evaluatee_id,
+        "ratings": req.ratings,
+        "comment": req.comment,
+        "created_at": datetime.utcnow(),
+    }
+    try:
+        saved = server.review_repo.save(review)
+    except ValueError as e:
+        raise IllegalStateError(message=str(e)) from e
 
     # 更新信任画像
     domain_tag = task.domain_tag.value
@@ -119,14 +117,15 @@ async def create_review(
         )
     )
 
-    return ok(review)
+    return ok(_to_api(saved))
 
 
 @router.get("/orders/{task_id}/reviews", response_model=Envelope)
 async def get_reviews(
     task_id: str,
+    server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
     """查询订单评价。"""
-    reviews = _reviews_store.get(task_id, [])
-    return ok(reviews)
+    reviews = server.review_repo.find_by_task(task_id)
+    return ok([_to_api(r) for r in reviews])

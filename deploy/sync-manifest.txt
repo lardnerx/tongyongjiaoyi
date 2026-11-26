@@ -15,6 +15,8 @@ src/umcp_core/shared/notification/center.py
 src/umcp_core/shared/notification/repository.py
 src/umcp_core/shared/payment/repository.py
 src/umcp_core/shared/payment/service.py
+src/umcp_core/shared/review/__init__.py
+src/umcp_core/shared/review/repository.py
 src/umcp_core/shared/rules/models.py
 src/umcp_core/shared/rules/repository.py
 src/umcp_core/transport/__main__.py

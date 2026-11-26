@@ -62,6 +62,10 @@ from umcp_core.shared.notification.repository import (
     InMemoryNotificationRepository,
     PostgresNotificationRepository,
 )
+from umcp_core.shared.review.repository import (
+    InMemoryReviewRepository,
+    PostgresReviewRepository,
+)
 
 
 class PluginDescriptor:
@@ -110,6 +114,9 @@ class UMCPServer:
         self.rule_repo: RuleRepository | None = None
         self.payment_repo: (
             InMemoryPaymentRepository | PostgresPaymentRepository | None
+        ) = None
+        self.review_repo: (
+            InMemoryReviewRepository | PostgresReviewRepository | None
         ) = None
         self.notification_repo: (
             InMemoryNotificationRepository | PostgresNotificationRepository | None
@@ -183,6 +190,7 @@ class UMCPServer:
         self.payment_repo = bundle.payment_repo
         self.rule_repo = bundle.rule_repo
         self.notification_repo = bundle.notification_repo
+        self.review_repo = bundle.review_repo
         self.event_bus.subscribe_all(self.event_repo.append)
         self._postgres_bundle = bundle
         # 将 user_repo 注入到 PhoneAuthProvider
@@ -208,6 +216,7 @@ class UMCPServer:
         self.payment_repo = InMemoryPaymentRepository()
         self.rule_repo = InMemoryRuleRepository()
         self.notification_repo = InMemoryNotificationRepository()
+        self.review_repo = InMemoryReviewRepository()
         # 同步把 event_bus 的事件落库
         self.event_bus.subscribe_all(self.event_repo.append)
         # 将 user_repo 注入到 PhoneAuthProvider
