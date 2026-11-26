@@ -133,6 +133,8 @@ class UMCPServer:
 
         # 已加载插件
         self._plugins: list[PluginDescriptor] = []
+        # 插件注册的 HTTP 路由（(router, prefix)，由 transport.create_app 统一挂载）
+        self._plugin_routers: list[tuple[Any, str]] = []
         self._started: bool = False
 
         # 注册全局事件审计
@@ -326,6 +328,27 @@ class UMCPServer:
     def register_task_type(self, task_type: str, builder: Any) -> None:
         """注册任务类型到工厂。"""
         self.task_factory.register_builder(task_type, builder)
+
+    # ------------------------------------------------------------------
+    # 插件 HTTP 路由
+    # ------------------------------------------------------------------
+
+    def register_router(self, router: Any, prefix: str = "") -> None:
+        """注册插件提供的 HTTP 路由。
+
+        核心库不感知具体业务路径：插件在 ``register_plugin`` 中调用本方法，
+        ``transport.create_app`` 构建应用时再统一挂载。
+
+        Args:
+            router: FastAPI APIRouter（已内置 prefix 时 prefix 传空串）
+            prefix: 额外挂载前缀
+        """
+        self._plugin_routers.append((router, prefix))
+
+    @property
+    def plugin_routers(self) -> list[tuple[Any, str]]:
+        """返回已注册的插件路由快照。"""
+        return list(self._plugin_routers)
 
     # ------------------------------------------------------------------
     # 插件加载

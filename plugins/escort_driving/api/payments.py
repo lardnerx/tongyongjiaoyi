@@ -55,9 +55,26 @@ def _get_payment_service(server: UMCPServer) -> Any:
     return svc
 
 
-def _compute_deposit_amount(deal: Any) -> float:
-    """计算定金金额（总价 * 30%）。"""
-    amount = round((deal.final_amount or 0.0) * 0.3, 2)
+def _deposit_ratio(server: UMCPServer) -> float:
+    """定金比例（来自规则配置，默认 0.3）。"""
+    rule_config = getattr(server, "rule_config", None)
+    if rule_config is None:
+        return 0.3
+    try:
+        return float(rule_config.get("escort.pricing.deposit_ratio", default=0.3))
+    except (TypeError, ValueError):
+        return 0.3
+
+
+def _compute_deposit_amount(server: UMCPServer, deal: Any) -> float:
+    """计算定金金额：优先用报价时锁定的金额，否则按总价 × 配置比例。"""
+    stored = (deal.metadata or {}).get("pricing", {}).get("deposit_amount")
+    if stored is None:
+        stored = (deal.metadata or {}).get("deposit_amount")
+    if stored is not None:
+        amount = round(float(stored), 2)
+    else:
+        amount = round((deal.final_amount or 0.0) * _deposit_ratio(server), 2)
     if amount <= 0:
         raise IllegalStateError(message="支付金额必须大于 0")
     return amount
@@ -96,7 +113,7 @@ async def create_payment(
 
     payment_service = _get_payment_service(server)
     is_wechat = _is_wechat_gateway(server)
-    amount = _compute_deposit_amount(deal)
+    amount = _compute_deposit_amount(server, deal)
     payment_type = PaymentType(req.payment_type)
 
     # 创建支付意图

@@ -147,8 +147,13 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
     # 异常处理器
     register_exception_handlers(app)
 
-    # 路由
+    # 路由：核心通用路由 + 插件注册的业务路由（插件需在 create_app 之前加载）
     register_routers(app)
+    for plugin_router, prefix in server.plugin_routers:
+        if prefix:
+            app.include_router(plugin_router, prefix=prefix)
+        else:
+            app.include_router(plugin_router)
 
     # 静态文件服务：挂载上传目录（头像等）
     uploads_dir = Path(__file__).resolve().parent.parent.parent.parent / "uploads"

@@ -240,6 +240,62 @@ def test_confirm_payment_after_completed(authed_client):
     assert balance["order_count"] == 1
 
 
+def test_realtime_order_creates_deal_with_pricing(authed_client, app_with_escort):
+    """实时单抢单即建立 Deal，计价与佣金由 PaymentSchema 负责。"""
+    server = app_with_escort.state.server
+    uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
+
+    create_resp = authed_client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": uid,
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "economy",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = create_resp.json()["data"]["task_id"]
+
+    claimed = authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/claim", json={"coach_id": uid}
+    )
+    deal_id = claimed.json()["data"]["deal_id"]
+    assert deal_id
+
+    deal = server.deal_repo.find_by_id(deal_id)
+    assert deal.status == "active"
+    assert deal.final_amount == 200.0  # economy 100 元/时 × 2 小时
+    assert deal.metadata["commission"] == 40.0  # 20% 平台佣金
+    assert deal.metadata["supplier_amount"] == 160.0
+    assert deal.metadata["pricing"]["rate"] == 100.0
+    assert deal.metadata["pricing"]["deposit_amount"] == 60.0
+
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert server.deal_repo.find_by_id(deal_id).status == "in_service"
+
+    authed_client.post(
+        f"/api/v1/escort/orders/{task_id}/check-out",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert server.deal_repo.find_by_id(deal_id).status == "completed"
+
+    confirmed = authed_client.post(f"/api/v1/escort/orders/{task_id}/confirm")
+    data = confirmed.json()["data"]
+    assert data["deal_id"] == deal_id
+    assert data["settled_amount"] == 200.0
+
+    settled_deal = server.deal_repo.find_by_id(deal_id)
+    assert settled_deal.metadata["commission"] == 40.0
+    assert settled_deal.metadata["supplier_amount"] == 160.0
+
+
 def test_check_in_out_records_timestamps(authed_client):
     """签到/签退记录时间戳，供计时页与结算页使用。"""
     uid = authed_client.get("/api/v1/auth/me").json()["data"]["user_id"]
@@ -391,7 +447,7 @@ def test_pick_coaches_for_order_filters_by_radius():
     from types import SimpleNamespace
 
     from umcp_core.shared.lbs.in_memory import InMemoryLBSService
-    from umcp_core.transport.routers.escort.orders import _pick_coaches_for_order
+    from escort_driving.api.orders import _pick_coaches_for_order
 
     lbs = InMemoryLBSService()
     lbs.update_location("near", 39.9042, 116.4074)

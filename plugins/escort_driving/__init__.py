@@ -42,8 +42,8 @@ def register_plugin(server: "UMCPServer") -> None:
     """
     domain = PLUGIN_MANIFEST["domain"]
     from umcp_core.layers.l3 import CredentialFilter, InstantMatch
-    from umcp_core.layers.l4 import FlatCommissionRule, Hourly
     from umcp_core.layers.l5 import WeightedSumTrustEngine
+    from escort_driving.pricing import EscortPaymentSchema
     from escort_driving.scoring import EscortMatchScorer
     from escort_driving.scheduled_match import ScheduledMatchStrategy
 
@@ -56,9 +56,10 @@ def register_plugin(server: "UMCPServer") -> None:
     )
     server.register_payment_schema(
         domain,
-        Hourly(
+        EscortPaymentSchema(
+            config_provider=lambda: getattr(server, "rule_config", None),
             hourly_rate=PLUGIN_MANIFEST["hourly_rate"],
-            commission_rule=FlatCommissionRule(rate=PLUGIN_MANIFEST["commission_rate"]),
+            commission_rate=PLUGIN_MANIFEST["commission_rate"],
         ),
     )
     server.register_trust_engine(
@@ -114,6 +115,16 @@ def register_plugin(server: "UMCPServer") -> None:
             "escort.cancel.realtime.timeout_seconds": 300,
             "escort.cancel.realtime.expand_after_seconds": 30,
             "escort.match.realtime.radius_km": 5.0,   # 实时单首轮推送半径（<=0 不限）
+            # 计价规则（运营后台可改，改价只影响新成交订单）
+            "escort.pricing.car_type_hourly": {
+                "economy": 100.0,
+                "professional": 200.0,
+                "luxury": 500.0,
+                "business": 400.0,
+            },
+            "escort.pricing.default_hourly_rate": 80.0,
+            "escort.pricing.deposit_ratio": 0.3,
+            "escort.pricing.commission_rate": 0.20,
             "escort.cancel.scheduled.penalty_tiers": [
                 {"hours_before": 24, "penalty": 0.2},
                 {"hours_before": 12, "penalty": 0.5},
@@ -130,6 +141,16 @@ def register_plugin(server: "UMCPServer") -> None:
     # 通知中心初始化
     # ================================================================
     _setup_notification_center(server)
+
+    # ================================================================
+    # 行业 HTTP 路由注册
+    # ================================================================
+    # 核心库不感知陪驾业务路径，路由随插件注册、由 create_app 统一挂载。
+    from .api import ROUTERS
+
+    for router in ROUTERS:
+        server.register_router(router)
+    logger.info("[ROUTER] 陪驾业务路由已注册: %d 个", len(ROUTERS))
 
 
 def _setup_notification_center(server: "UMCPServer") -> None:

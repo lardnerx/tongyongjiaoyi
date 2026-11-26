@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from umcp_core.core.base import User
+from umcp_core.core.deal import Deal, DealStatus
 from umcp_core.core.domain import DomainTag
 from umcp_core.core.task import TaskStatus
 from umcp_core.events.bus import Event
@@ -22,21 +23,13 @@ from umcp_core.transport.errors import (
     ValidationError,
 )
 from umcp_core.transport.schemas import Envelope, ok
-from plugins.escort_driving.tasks import EscortTask
+from ..tasks import EscortTask
 
 router = APIRouter(prefix="/api/v1/escort", tags=["escort-orders"])
 
 # per-task_id 锁，确保抢单串行化（避免并发抢单竞态条件）
 _claim_locks: dict[str, threading.Lock] = {}
 _claim_locks_guard = threading.Lock()
-
-# 各车型单价（元/小时），与前端 CAR_TYPE_UNIT_PRICES 保持一致
-_CAR_TYPE_HOURLY_PRICES: dict[str, float] = {
-    "economy": 100.0,
-    "professional": 200.0,
-    "luxury": 500.0,
-    "business": 400.0,
-}
 
 
 def _get_claim_lock(task_id: str) -> threading.Lock:
@@ -142,6 +135,32 @@ def _pick_coaches_for_order(
     nearby_online = [uid for uid in online if uid in nearby_ids]
     # 半径内没有在线司机时退化为全量在线司机，避免订单无人可推
     return nearby_online or online
+
+
+def _latest_deal(server: Any, task_id: str):
+    """取任务最新一笔交易（实时单与预约单都由 Deal 承载资金状态）。"""
+    deals = server.deal_repo.find_by_task(task_id)
+    return deals[-1] if deals else None
+
+
+def _quote_deal(server: Any, task: Any, deal: Any) -> None:
+    """用 PaymentSchema 报价，并把总价/佣金/分账锁定到 Deal。
+
+    报价在抢单或选教练时一次性完成，后续结算复用 ``deal.final_amount``，
+    运营改价不会影响已成交订单。
+    """
+    schema = server.payment_schema_for(task.domain_tag.value)
+    if schema is None:
+        return
+    order = schema.calculate(task, deal)
+    deal.final_amount = order.total_amount
+    deal.metadata.update(
+        {
+            "pricing": order.metadata,
+            "commission": order.commission,
+            "supplier_amount": order.supplier_amount,
+        }
+    )
 
 
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
@@ -367,11 +386,10 @@ async def get_order(
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
     info = _task_to_order_info(task)
-    # 预约单反查 deal_id
-    if _order_type_of(task) == "SCHEDULED":
-        deals = server.deal_repo.find_by_task(task_id)
-        if deals:
-            info.deal_id = deals[-1].deal_id  # 取最新 deal
+    # 实时单与预约单都通过 Deal 承载资金状态，统一反查最新 deal
+    deal = _latest_deal(server, task_id)
+    if deal is not None:
+        info.deal_id = deal.deal_id
     return ok(info.model_dump())
 
 
@@ -419,31 +437,30 @@ async def cancel_order(
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
 
-    # 预约单：取消 deal 并退款
-    if _order_type_of(task) == "SCHEDULED":
-        deals = server.deal_repo.find_by_task(task_id)
-        payment_service = getattr(server, "payment_service", None)
-        for deal in deals:
-            if deal.status in ("pending", "active"):
-                deal.bind_event_bus(server.event_bus)
-                try:
-                    deal.cancel()
-                    server.deal_repo.save(deal)
-                except (RuntimeError, ValueError):
-                    pass
-            # 退款已支付的定金
-            if payment_service is not None:
-                records = payment_service.repo.find_by_deal(deal.deal_id)
-                for record in records:
-                    if record["status"] == "paid":
-                        try:
-                            payment_service.refund(
-                                payment_id=record["payment_id"],
-                                amount=record["amount"],
-                                reason="学员取消预约单",
-                            )
-                        except Exception:
-                            pass
+    # 取消关联 deal 并退款（预约单定金、实时单报价都挂在 Deal 上）
+    deals = server.deal_repo.find_by_task(task_id)
+    payment_service = getattr(server, "payment_service", None)
+    for deal in deals:
+        if deal.status in ("pending", "active"):
+            deal.bind_event_bus(server.event_bus)
+            try:
+                deal.cancel()
+                server.deal_repo.save(deal)
+            except (RuntimeError, ValueError):
+                pass
+        # 退款已支付的定金
+        if payment_service is not None:
+            records = payment_service.repo.find_by_deal(deal.deal_id)
+            for record in records:
+                if record["status"] == "paid":
+                    try:
+                        payment_service.refund(
+                            payment_id=record["payment_id"],
+                            amount=record["amount"],
+                            reason="学员取消订单",
+                        )
+                    except Exception:
+                        pass
 
     info = _task_to_order_info(task)
     info.cancel_penalty = penalty
@@ -519,6 +536,24 @@ async def claim_order(
             raise IllegalStateError(message=str(e)) from e
         server.task_repo.save(task)
 
+    # 抢单成功即建立交易：报价走 PaymentSchema，状态置 ACTIVE（实时单为后付费）
+    deal = _latest_deal(server, task_id)
+    if deal is None:
+        deal = Deal(
+            task_id=task_id,
+            resource_id=req.coach_id,
+            demander_id=task.demander_id,
+            supplier_id=req.coach_id,
+            metadata={"order_type": "REALTIME"},
+        )
+        _quote_deal(server, task, deal)
+        deal.bind_event_bus(server.event_bus)
+        try:
+            deal.activate()  # pending → active；DEAL_PAID 事件复用作「订单已确认」通知
+        except (RuntimeError, ValueError) as e:
+            raise IllegalStateError(message=str(e)) from e
+        server.deal_repo.save(deal)
+
     # 广播给其他在线教练：订单已被抢
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
@@ -532,7 +567,9 @@ async def claim_order(
         except Exception:
             pass
 
-    return ok(_task_to_order_info(task).model_dump())
+    info = _task_to_order_info(task)
+    info.deal_id = deal.deal_id
+    return ok(info.model_dump())
 
 
 @router.post("/orders/{task_id}/check-in", response_model=Envelope)
@@ -557,6 +594,16 @@ async def check_in_order(
         raise IllegalStateError(message=str(e)) from e
     task.structured_fields["check_in_at"] = _iso_utc(datetime.utcnow())
     server.task_repo.save(task)
+
+    # 同步交易状态：ACTIVE → IN_SERVICE
+    deal = _latest_deal(server, task_id)
+    if deal is not None and deal.status == DealStatus.ACTIVE:
+        deal.bind_event_bus(server.event_bus)
+        try:
+            deal.check_in()
+            server.deal_repo.save(deal)
+        except (RuntimeError, ValueError):
+            pass
 
     # 推送签到事件给学员
     server.event_bus.publish(
@@ -609,7 +656,21 @@ async def check_out_order(
         except (ValueError, TypeError):
             pass
     server.task_repo.save(task)
-    return ok(_task_to_order_info(task).model_dump())
+
+    # 同步交易状态：IN_SERVICE → COMPLETED
+    deal = _latest_deal(server, task_id)
+    if deal is not None and deal.status == DealStatus.IN_SERVICE:
+        deal.bind_event_bus(server.event_bus)
+        try:
+            deal.check_out()
+            server.deal_repo.save(deal)
+        except (RuntimeError, ValueError):
+            pass
+
+    info = _task_to_order_info(task)
+    if deal is not None:
+        info.deal_id = deal.deal_id
+    return ok(info.model_dump())
 
 
 @router.post("/orders/{task_id}/confirm", response_model=Envelope)
@@ -618,8 +679,9 @@ async def confirm_order_payment(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """客户确认完成订单并支付（Mock 支付，金额 = 车型单价 × 预定时长）。
+    """客户确认完成订单并支付（Mock 支付）。
 
+    金额由 PaymentSchema 计算（车型单价 × 预定时长），佣金与分账回写 Deal。
     客户在「我的订单」已完成列表中确认后调用；重复确认幂等返回。
     """
     task = server.task_repo.find_by_id(task_id)
@@ -632,15 +694,40 @@ async def confirm_order_payment(
     if task.structured_fields.get("customer_confirmed_at"):
         return ok(_task_to_order_info(task).model_dump())
 
-    car_type = task.structured_fields.get("car_type", "")
-    duration_hours = task.structured_fields.get("duration_hours", 0) or 0
-    unit_price = _CAR_TYPE_HOURLY_PRICES.get(car_type)
-    task.structured_fields["customer_confirmed_at"] = _iso_utc(datetime.utcnow())
-    task.structured_fields["settled_amount"] = (
-        round(unit_price * duration_hours, 2) if unit_price else None
+    deal = _latest_deal(server, task_id)
+    # 历史订单可能没有 Deal，用临时交易完成计价，不落库
+    pricing_deal = deal or Deal(
+        task_id=task.task_id,
+        resource_id=task.assigned_resource_id or "",
+        demander_id=task.demander_id,
+        supplier_id=task.assigned_resource_id or "",
     )
+    schema = server.payment_schema_for(task.domain_tag.value)
+    if schema is None:
+        raise IllegalStateError(message="支付方案未注册")
+    order = schema.calculate(task, pricing_deal)
+
+    task.structured_fields["customer_confirmed_at"] = _iso_utc(datetime.utcnow())
+    task.structured_fields["settled_amount"] = order.total_amount
+    task.structured_fields["commission"] = order.commission
+    task.structured_fields["supplier_amount"] = order.supplier_amount
     server.task_repo.save(task)
-    return ok(_task_to_order_info(task).model_dump())
+
+    if deal is not None:
+        deal.final_amount = order.total_amount
+        deal.metadata.update(
+            {
+                "commission": order.commission,
+                "supplier_amount": order.supplier_amount,
+                "pricing": order.metadata,
+                "settled_at": datetime.utcnow().isoformat(),
+            }
+        )
+        server.deal_repo.save(deal)
+
+    info = _task_to_order_info(task)
+    info.deal_id = deal.deal_id if deal is not None else None
+    return ok(info.model_dump())
 
 
 class SelectCoachRequest(BaseModel):
@@ -692,8 +779,7 @@ async def select_coach(
         raise IllegalStateError(message=str(e)) from e
     server.task_repo.save(task)
 
-    # 计算定金：用 PaymentSchema 算总价，再取 30%
-    from umcp_core.core.deal import Deal
+    # 计算定金：PaymentSchema 报价后取 metadata.deposit_amount（比例来自规则配置）
     deal = Deal(
         task_id=task.task_id,
         resource_id=req.resource_id,
@@ -701,14 +787,8 @@ async def select_coach(
         supplier_id=resource.supplier_id,
     )
     deal.bind_event_bus(server.event_bus)
-
-    schema = server.payment_schema_for(task.domain_tag.value)
-    if schema is not None:
-        payment_order = schema.calculate(task, deal)
-        deposit_amount = round(payment_order.total_amount * 0.3, 2)
-        deal.final_amount = payment_order.total_amount
-    else:
-        deposit_amount = 0.0
+    _quote_deal(server, task, deal)
+    deposit_amount = float(deal.metadata.get("pricing", {}).get("deposit_amount", 0.0))
 
     server.deal_repo.save(deal)
 
