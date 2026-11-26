@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from umcp_core.core.base import User
-from umcp_core.core.domain import DomainTag
 from umcp_core.server import UMCPServer
 from umcp_core.transport.deps import get_current_user, get_server
 from umcp_core.transport.errors import IllegalStateError, NotFoundError
@@ -40,7 +39,7 @@ async def trigger_match(
     strategy = server.match_strategy_for(req.domain_tag)
     if strategy is None:
         raise NotFoundError(message=f"domain {req.domain_tag} 未注册匹配策略")
-    candidates = server.resource_repo.find_available(DomainTag.of(req.domain_tag))
+    candidates = server.match_candidates(task, req.domain_tag)
     result = strategy.execute(task, candidates)
     info = MatchResultInfo(
         task_id=result.task_id,

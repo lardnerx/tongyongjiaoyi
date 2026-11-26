@@ -101,7 +101,11 @@ async def create_review(
             comment=req.comment,
             domain_tag=domain_tag,
         )
-        trust_engine.record_evaluation(evaluation)
+        profile = trust_engine.record_evaluation(evaluation)
+        # 持久化画像，供 /trust/profiles 与跨 domain 聚合读取
+        if getattr(server, "trust_repo", None) is not None:
+            profile.domain_tag = domain_tag
+            server.trust_repo.save_profile(profile)
 
     # 发布评价事件
     server.event_bus.publish(

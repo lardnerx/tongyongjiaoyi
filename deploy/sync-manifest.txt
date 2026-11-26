@@ -9,6 +9,8 @@ deploy/umcp-backup.timer
 deploy/umcp-healthwatch.service
 deploy/umcp-healthwatch.timer
 src/umcp_core/layers/l1/access.py
+src/umcp_core/layers/l2/__init__.py
+src/umcp_core/layers/l2/abstraction.py
 src/umcp_core/repositories/postgres/bundle.py
 src/umcp_core/repositories/postgres/converters.py
 src/umcp_core/server.py
@@ -26,7 +28,10 @@ src/umcp_core/transport/app.py
 src/umcp_core/transport/config.py
 src/umcp_core/transport/routers/auth.py
 src/umcp_core/transport/routers/lbs.py
+src/umcp_core/transport/routers/matches.py
 src/umcp_core/transport/routers/notifications.py
+src/umcp_core/transport/routers/tasks.py
+src/umcp_core/transport/routers/trust.py
 src/umcp_core/transport/routers/__init__.py
 src/umcp_core/transport/routers/admin/rules.py
 src/umcp_core/transport/ws.py

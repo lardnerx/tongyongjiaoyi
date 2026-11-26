@@ -92,7 +92,15 @@ async def submit_evaluation(
         domain_tag=req.domain_tag,
     )
     server.trust_repo.save_evaluation(evaluation)
-    # 更新信任画像（若注册了 trust_engine）
-    if server.trust_engine and req.domain_tag:
-        server.trust_engine.evaluate(req.evaluatee_id)
+    # 更新信任画像：按 domain 路由到对应引擎并持久化，
+    # 使画像查询与跨 domain 聚合在进程重启后仍有数据
+    engine = (
+        server.trust_engine_for(req.domain_tag)
+        if req.domain_tag
+        else server.trust_engine
+    )
+    if engine is not None:
+        profile = engine.record_evaluation(evaluation)
+        profile.domain_tag = req.domain_tag or profile.domain_tag
+        server.trust_repo.save_profile(profile)
     return ok(message="评价已提交")

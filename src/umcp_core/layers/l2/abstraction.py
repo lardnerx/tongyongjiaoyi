@@ -65,6 +65,34 @@ class ResourceRegistry(ABC):
         """查找某领域下所有可用资源。"""
 
 
+class RepositoryResourceRegistry(ResourceRegistry):
+    """基于 ResourceRepository 的默认资源注册表实现。
+
+    核心库只提供 L2 抽象，具体存储交给仓储实现（内存/PostgreSQL），
+    因此默认注册表只是仓储的一层语义封装：上线/下线即状态变更，
+    可用资源查询委托仓储。行业插件通过 ``server.resource_registry``
+    统一注册与下线资源，无需直接操作仓储。
+    """
+
+    def __init__(self, repo: Any) -> None:
+        self._repo = repo
+
+    def register(self, resource: Resource) -> None:
+        resource.register()
+        self._repo.save(resource)
+
+    def unregister(self, resource_id: str) -> None:
+        from umcp_core.core.resource import ResourceStatus
+
+        self._repo.update_status(resource_id, ResourceStatus.OFFLINE)
+
+    def find_by_id(self, resource_id: str) -> Resource | None:
+        return self._repo.find_by_id(resource_id)
+
+    def find_available(self, domain_tag: DomainTag) -> list[Resource]:
+        return self._repo.find_available(domain_tag)
+
+
 class DefaultTaskFactory(TaskFactory):
     """默认任务工厂实现（内存注册表）。"""
 

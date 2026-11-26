@@ -21,11 +21,16 @@ from pathlib import Path
 from typing import Any
 
 from umcp_core.core.domain import DomainTag
+from umcp_core.core.resource import Resource
 from umcp_core.core.task import Task, TaskStatus
 from umcp_core.events.bus import EventBus, Event
 from umcp_core.events.types import EventType
 from umcp_core.layers.l1 import AuthProvider, PhoneAuthProvider
-from umcp_core.layers.l2 import DefaultTaskFactory, ResourceRegistry
+from umcp_core.layers.l2 import (
+    DefaultTaskFactory,
+    RepositoryResourceRegistry,
+    ResourceRegistry,
+)
 from umcp_core.layers.l3 import MatchStrategy
 from umcp_core.layers.l4 import PaymentSchema
 from umcp_core.layers.l5 import MeanTrustAggregator, TrustAggregator, TrustEngine
@@ -99,6 +104,8 @@ class UMCPServer:
         self.auth_provider: AuthProvider = PhoneAuthProvider()
         self.task_factory: DefaultTaskFactory = DefaultTaskFactory()
         self.resource_registry: ResourceRegistry | None = None
+        # 资源注册表是否由核心自动装配（用户注入自定义实现后不再覆盖）
+        self._resource_registry_auto: bool = True
         self.match_strategy: MatchStrategy | None = None
         self.payment_schema: PaymentSchema | None = None
         self.trust_engine: TrustEngine | None = None
@@ -206,6 +213,7 @@ class UMCPServer:
         # 将 user_repo 注入到 PhoneAuthProvider
         if isinstance(self.auth_provider, PhoneAuthProvider):
             self.auth_provider._user_repo = self.user_repo
+        self._bind_resource_registry()
         return bundle
 
     def dispose(self) -> None:
@@ -232,6 +240,7 @@ class UMCPServer:
         # 将 user_repo 注入到 PhoneAuthProvider
         if isinstance(self.auth_provider, PhoneAuthProvider):
             self.auth_provider._user_repo = self.user_repo
+        self._bind_resource_registry()
         return bundle
 
     def set_repositories(
@@ -254,6 +263,20 @@ class UMCPServer:
         # 将 user_repo 注入到 PhoneAuthProvider
         if isinstance(self.auth_provider, PhoneAuthProvider):
             self.auth_provider._user_repo = self.user_repo
+        self._bind_resource_registry()
+
+    def _bind_resource_registry(self) -> None:
+        """仓储就绪后装配默认资源注册表（L2 主链路）。
+
+        仅在用户未注入自定义注册表时生效；仓储缺失时保持 None。
+        """
+        if not self._resource_registry_auto:
+            return
+        self.resource_registry = (
+            RepositoryResourceRegistry(self.resource_repo)
+            if self.resource_repo is not None
+            else None
+        )
 
     # ------------------------------------------------------------------
     # 层组件注入
@@ -276,6 +299,7 @@ class UMCPServer:
 
     def set_resource_registry(self, registry: ResourceRegistry) -> None:
         self.resource_registry = registry
+        self._resource_registry_auto = False
 
     # ------------------------------------------------------------------
     # 按 domain 注册的策略（多插件并存）
@@ -327,6 +351,39 @@ class UMCPServer:
         """按 domain 查询信任引擎，未命中时回退到单值属性。"""
         key = domain.value if isinstance(domain, DomainTag) else str(domain).lower()
         return self._trust_engines.get(key, self.trust_engine)
+
+    # ------------------------------------------------------------------
+    # 匹配候选（L2 资源注册表 + L6 智能推荐）
+    # ------------------------------------------------------------------
+
+    def available_resources(self, domain_tag: DomainTag | str) -> list[Resource]:
+        """查询某 domain 下的可用资源。
+
+        优先走 L2 ``resource_registry``；未装配时回退到 ``resource_repo``，
+        兼容只注入仓储的调用方。
+        """
+        tag = (
+            domain_tag
+            if isinstance(domain_tag, DomainTag)
+            else DomainTag.of(str(domain_tag))
+        )
+        if self.resource_registry is not None:
+            return list(self.resource_registry.find_available(tag))
+        if self.resource_repo is not None:
+            return list(self.resource_repo.find_available(tag))
+        return []
+
+    def match_candidates(
+        self, task: Task, domain_tag: DomainTag | str | None = None
+    ) -> list[Resource]:
+        """匹配候选：资源注册表查询 → L6 智能模块推荐排序。
+
+        L6 默认 ``NoopIntelligenceModule`` 原样返回；行业接入智能模块后
+        可在此影响候选顺序（不改变 L3 匹配策略的选择逻辑）。
+        """
+        candidates = self.available_resources(domain_tag or task.domain_tag)
+        recommended = self.intelligence_module.recommend(task, candidates)
+        return list(recommended)
 
     def set_trust_aggregator(self, aggregator: TrustAggregator) -> None:
         """注入自定义信任聚合策略（默认 MeanTrustAggregator）。"""
@@ -656,7 +713,7 @@ class UMCPServer:
 
         task.bind_event_bus(self.event_bus)
         task.publish()
-        candidates = self.resource_repo.find_available(task.domain_tag)
+        candidates = self.match_candidates(task)
         result = strategy.execute(task, candidates)
         if not result.matched:
             task.cancel()
@@ -698,7 +755,7 @@ class UMCPServer:
         # 默认执行器负责把子任务从 DRAFT 推进到终态：
         # publish → assign_to → start_execution → complete
         subtask.publish()
-        candidates = self.resource_repo.find_available(subtask.domain_tag)
+        candidates = self.match_candidates(subtask)
         result = strategy.execute(subtask, candidates)
         if not result.matched:
             subtask.cancel()

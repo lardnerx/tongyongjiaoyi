@@ -36,6 +36,34 @@ class TaskInfo(BaseModel):
     assigned_resource_id: str | None = None
 
 
+class CompositeSubtaskRequest(BaseModel):
+    key: str
+    domain_tag: str
+    title: str = ""
+    description: str = ""
+    structured_fields: dict[str, Any] | None = None
+
+
+class CreateCompositeTaskRequest(BaseModel):
+    demander_id: str
+    domain_tag: str
+    subtasks: list[CompositeSubtaskRequest]
+    dependencies: dict[str, list[str]] = {}
+
+
+class CompositeSubtaskInfo(BaseModel):
+    key: str
+    task_id: str
+    domain_tag: str
+    status: str
+
+
+class CompositeTaskInfo(BaseModel):
+    task_id: str
+    status: str
+    subtasks: list[CompositeSubtaskInfo]
+
+
 def _task_to_info(task: Any) -> TaskInfo:
     return TaskInfo(
         task_id=task.task_id,
@@ -71,6 +99,73 @@ async def create_task(
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
     return ok(_task_to_info(task))
+
+
+@router.post("/composite", response_model=Envelope[CompositeTaskInfo])
+async def create_composite_task(
+    req: CreateCompositeTaskRequest,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope[CompositeTaskInfo]:
+    """发布复合任务（跨 domain DAG 编排）。
+
+    请求中的 ``dependencies`` 使用子任务 ``key`` 表达依赖，服务端转换为
+    真实 task_id 后交给 ``CompositeTask`` 校验 DAG 并启动编排。
+    """
+    from umcp_core.core.composite_task import CompositeTask
+
+    if not req.subtasks:
+        raise IllegalStateError(message="subtasks 不能为空")
+    keys = [s.key for s in req.subtasks]
+    if len(set(keys)) != len(keys):
+        raise IllegalStateError(message="subtask key 不能重复")
+
+    built: list[StandardTask] = []
+    id_by_key: dict[str, str] = {}
+    for sub in req.subtasks:
+        task = StandardTask(
+            demander_id=req.demander_id,
+            domain_tag=DomainTag.of(sub.domain_tag),
+            title=sub.title,
+            description=sub.description,
+            structured_fields=sub.structured_fields or {},
+        )
+        built.append(task)
+        id_by_key[sub.key] = task.task_id
+
+    try:
+        dependencies = {
+            id_by_key[key]: [id_by_key[dep] for dep in deps]
+            for key, deps in req.dependencies.items()
+        }
+    except KeyError as e:
+        raise IllegalStateError(message=f"依赖引用了未知子任务: {e}") from e
+
+    composite = CompositeTask(
+        demander_id=req.demander_id,
+        domain_tag=DomainTag.of(req.domain_tag),
+        subtasks=built,
+        dependencies=dependencies,
+    )
+    try:
+        server.publish_and_match(composite)
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+
+    info = CompositeTaskInfo(
+        task_id=composite.task_id,
+        status=composite.status,
+        subtasks=[
+            CompositeSubtaskInfo(
+                key=req_sub.key,
+                task_id=task.task_id,
+                domain_tag=task.domain_tag.value,
+                status=task.status,
+            )
+            for task, req_sub in zip(built, req.subtasks)
+        ],
+    )
+    return ok(info)
 
 
 @router.get("", response_model=Envelope[PaginatedData[TaskInfo]])
