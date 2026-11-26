@@ -1,5 +1,6 @@
 # 同步清单：一行一个仓库相对路径，可写注释
 # web/ 前缀的文件改动 → 触发前端重建；其余 → 触发后端重启
+# 提交前校验是否漏项：python scripts/check_sync_manifest.py --uncommitted
 .env.example
 deploy/backup.sh
 deploy/healthwatch.sh

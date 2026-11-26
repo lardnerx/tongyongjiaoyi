@@ -65,6 +65,31 @@ jobs:
       - name: Run tests
         run: python -m pytest --tb=short -q
 
+  manifest:
+    name: Deploy manifest check
+    runs-on: ubuntu-latest
+    # 清单漏项会导致服务器发布缺文件，先以告警形式暴露，不阻断合并
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check sync manifest covers changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="origin/$BASE_REF"
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            BASE="$BEFORE_SHA"
+          else
+            BASE="HEAD~1"
+          fi
+          python3 scripts/check_sync_manifest.py --base "$BASE" --head HEAD
+
   build:
     name: Build (docker)
     runs-on: ubuntu-latest
