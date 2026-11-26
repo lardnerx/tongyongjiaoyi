@@ -332,7 +332,7 @@ class TestOrders:
     def test_tc08_realtime_timeout_cancel(self, client_and_server):
         """TC-08 实时单超时取消"""
         client, server, d_auth, s_auth, d_uid, s_uid = client_and_server
-        from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWorker
+        from plugins.escort_driving.workers.realtime_cancel import RealtimeCancelWorker
         data = _create_realtime_task(client, d_auth, d_uid)
         task_id = data["data"]["task_id"]
 

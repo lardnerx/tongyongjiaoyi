@@ -25,7 +25,6 @@ from umcp_core.transport.metrics import MetricsMiddleware, metrics_response
 from umcp_core.transport.routers import register_routers
 from umcp_core.transport.scheduler import SchedulerService
 from umcp_core.transport.ws import ConnectionManager, make_ws_event_bridge
-from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWorker
 from umcp_core.transport.workers.payment_timeout_worker import PaymentTimeoutWorker
 
 logger = logging.getLogger(__name__)
@@ -70,10 +69,11 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
         bridge = make_ws_event_bridge(ws_manager, loop)
         ws_bridge_ref["bridge"] = bridge
         server.event_bus.subscribe_all(bridge)
-        # 启动调度器服务（注册 Worker）
+        # 启动调度器服务（核心通用 Worker + 插件注册的行业 Worker）
         scheduler = SchedulerService(interval_seconds=1.0)
-        scheduler.register(RealtimeCancelWorker())
         scheduler.register(PaymentTimeoutWorker())
+        for worker in server.scheduler_workers:
+            scheduler.register(worker)
         app.state.scheduler = scheduler
         scheduler_task = asyncio.create_task(scheduler.start(context={"server": server}))
         app.state.scheduler_task = scheduler_task
@@ -139,8 +139,8 @@ def create_app(server: UMCPServer, config: TransportConfig) -> FastAPI:
             window_seconds=config.rate_limit_window_seconds,
             max_requests=config.rate_limit_max_requests,
             redis_url=config.rate_limit_redis_url,
-            # 支付回调本身豁免限流，避免微信回调超时
-            exempt_paths=["/api/v1/escort/payments/callback"],
+            # 支付回调等敏感入口豁免限流，避免第三方回调超时
+            exempt_paths=server.rate_limit_exempt_paths,
         )
         logger.info("限流中间件已启用: window=%ss max=%s", config.rate_limit_window_seconds, config.rate_limit_max_requests)
 

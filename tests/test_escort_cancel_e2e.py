@@ -19,7 +19,7 @@ from umcp_core.server import UMCPServer
 from umcp_core.transport.app import create_app
 from umcp_core.transport.auth import JwtService, _ClaimsDemander, _ClaimsUser
 from umcp_core.transport.config import TransportConfig
-from umcp_core.transport.workers.realtime_cancel_worker import RealtimeCancelWorker
+from plugins.escort_driving.workers.realtime_cancel import RealtimeCancelWorker
 
 
 @pytest.fixture

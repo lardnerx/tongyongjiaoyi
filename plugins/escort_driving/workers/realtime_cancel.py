@@ -10,7 +10,6 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from umcp_core.core.domain import DomainTag
 from umcp_core.core.task import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class RealtimeCancelWorker:
     """实时单超时取消 worker。"""
 
-    name = "realtime_cancel"
+    name = "escort_realtime_cancel"
 
     def __init__(self) -> None:
         # 记录已扩展过的 task_id，避免重复广播

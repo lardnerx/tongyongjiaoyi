@@ -143,6 +143,13 @@ def register_plugin(server: "UMCPServer") -> None:
     )
     server.rule_config = rule_config
 
+    # 行业调度 Worker：实时单超时取消与扩圈推送（核心库只负责调度，不感知规则）
+    from .workers.realtime_cancel import RealtimeCancelWorker
+
+    server.register_worker(RealtimeCancelWorker())
+    # 支付回调豁免限流（第三方支付平台回调需无条件放行）
+    server.register_rate_limit_exempt_path("/api/v1/escort/payments/callback")
+
     # ================================================================
     # 通知中心初始化
     # ================================================================

@@ -142,6 +142,10 @@ class UMCPServer:
         self._plugins: list[PluginDescriptor] = []
         # 插件注册的 HTTP 路由（(router, prefix)，由 transport.create_app 统一挂载）
         self._plugin_routers: list[tuple[Any, str]] = []
+        # 插件注册的调度 Worker（由 transport.create_app 交给 SchedulerService）
+        self._scheduler_workers: list[Any] = []
+        # 插件注册的限流豁免路径（如第三方支付回调，由 create_app 交给中间件）
+        self._rate_limit_exempt_paths: list[str] = []
         self._started: bool = False
 
         # 注册全局事件审计
@@ -358,6 +362,43 @@ class UMCPServer:
     def plugin_routers(self) -> list[tuple[Any, str]]:
         """返回已注册的插件路由快照。"""
         return list(self._plugin_routers)
+
+    # ------------------------------------------------------------------
+    # 插件调度 Worker
+    # ------------------------------------------------------------------
+
+    def register_worker(self, worker: Any) -> None:
+        """注册插件提供的周期任务 Worker。
+
+        核心库不感知具体行业扫描规则：插件在 ``register_plugin`` 中调用本方法，
+        ``transport.create_app`` 启动调度器时统一注册并执行。
+
+        Args:
+            worker: 具备 ``name`` 属性与 ``async run(context)`` 方法的对象
+        """
+        self._scheduler_workers.append(worker)
+
+    @property
+    def scheduler_workers(self) -> list[Any]:
+        """返回已注册的插件 Worker 快照。"""
+        return list(self._scheduler_workers)
+
+    # ------------------------------------------------------------------
+    # 插件限流豁免路径
+    # ------------------------------------------------------------------
+
+    def register_rate_limit_exempt_path(self, path: str) -> None:
+        """注册不限流的路径（如第三方支付回调）。
+
+        核心库不感知具体行业回调地址：插件在 ``register_plugin`` 中调用本方法，
+        ``transport.create_app`` 配置限流中间件时统一使用。
+        """
+        self._rate_limit_exempt_paths.append(path)
+
+    @property
+    def rate_limit_exempt_paths(self) -> list[str]:
+        """返回已注册的限流豁免路径快照。"""
+        return list(self._rate_limit_exempt_paths)
 
     # ------------------------------------------------------------------
     # 插件加载
