@@ -43,7 +43,7 @@ def test_coach_online_registers(client_and_server):
         headers=_auth_headers(server),
     )
     assert resp.status_code == 200
-    assert "coach_1" in server.ws_manager.online_coaches
+    assert "coach_1" in server.ws_manager.online_suppliers
 
 
 def test_coach_offline_removes(client_and_server):
@@ -59,4 +59,4 @@ def test_coach_offline_removes(client_and_server):
         headers=_auth_headers(server),
     )
     assert resp.status_code == 200
-    assert "coach_1" not in server.ws_manager.online_coaches
+    assert "coach_1" not in server.ws_manager.online_suppliers

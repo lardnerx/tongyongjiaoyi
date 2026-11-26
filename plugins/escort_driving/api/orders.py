@@ -131,7 +131,7 @@ def _pick_coaches_for_order(
     - 否则只推给「在线 且 最新位置在半径内」的教练
     """
     manager = getattr(server, "ws_manager", None)
-    online = list(manager.online_coaches) if manager is not None else []
+    online = list(manager.online_suppliers) if manager is not None else []
     lbs = getattr(server, "lbs_service", None)
     if lbs is None or radius_km <= 0:
         return online
@@ -574,7 +574,7 @@ async def create_order(
             server, req.origin_lat, req.origin_lng, radius_km
         )
         try:
-            await manager.broadcast_to_coaches(message, target_coach_ids)
+            await manager.broadcast_to_suppliers(message, target_coach_ids)
         except Exception:
             pass
 
@@ -833,7 +833,7 @@ async def claim_order(
             "data": {"task_id": task_id, "coach_id": req.coach_id},
         }
         try:
-            await manager.broadcast_to_online_coaches(message)
+            await manager.broadcast_to_online_suppliers(message)
         except Exception:
             pass
 

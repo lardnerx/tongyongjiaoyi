@@ -151,7 +151,7 @@ async def coach_online(
     """教练上线：注册到在线教练集合，并更新位置到 LBS 服务。"""
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
-        manager.register_online_coach(coach_id)
+        manager.register_online_supplier(coach_id)
     # 更新位置到 LBS 服务
     lbs = getattr(server, "lbs_service", None)
     if lbs is not None:
@@ -168,5 +168,5 @@ async def coach_offline(
     """教练下线：从在线集合移除。"""
     manager = getattr(server, "ws_manager", None)
     if manager is not None:
-        manager.unregister_online_coach(coach_id)
+        manager.unregister_online_supplier(coach_id)
     return ok({"coach_id": coach_id, "online": False})

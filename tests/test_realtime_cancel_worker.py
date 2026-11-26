@@ -58,7 +58,7 @@ class _FakeWsManager:
     def __init__(self) -> None:
         self.broadcasts: list[dict] = []
 
-    async def broadcast_to_online_coaches(self, message: dict) -> None:
+    async def broadcast_to_online_suppliers(self, message: dict) -> None:
         self.broadcasts.append(message)
 
 

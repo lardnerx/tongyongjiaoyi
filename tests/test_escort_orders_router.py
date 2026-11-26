@@ -453,7 +453,7 @@ def test_pick_coaches_for_order_filters_by_radius():
     lbs.update_location("near", 39.9042, 116.4074)
     lbs.update_location("far", 31.2304, 121.4737)
     server = SimpleNamespace(
-        ws_manager=SimpleNamespace(online_coaches={"near", "far", "no_location"}),
+        ws_manager=SimpleNamespace(online_suppliers={"near", "far", "no_location"}),
         lbs_service=lbs,
     )
 
@@ -469,13 +469,13 @@ def test_pick_coaches_for_order_filters_by_radius():
 
     # 未启用 LBS 时同样退化为全量
     server_no_lbs = SimpleNamespace(
-        ws_manager=SimpleNamespace(online_coaches={"near"}), lbs_service=None
+        ws_manager=SimpleNamespace(online_suppliers={"near"}), lbs_service=None
     )
     assert _pick_coaches_for_order(server_no_lbs, 39.9, 116.4, 5.0) == ["near"]
 
     # 半径内没有在线教练时退化为全部在线教练（无位置信息的司机也能收到）
     server_no_nearby = SimpleNamespace(
-        ws_manager=SimpleNamespace(online_coaches={"no_location"}),
+        ws_manager=SimpleNamespace(online_suppliers={"no_location"}),
         lbs_service=lbs,
     )
     assert _pick_coaches_for_order(server_no_nearby, 39.9042, 116.4074, 1.0) == [

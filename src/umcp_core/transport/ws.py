@@ -57,7 +57,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[str, set[WebSocket]] = {}
         self._lock = threading.RLock()
-        self._online_coaches: set[str] = set()
+        self._online_suppliers: set[str] = set()
 
     async def connect(self, ws: WebSocket, user: User) -> None:
         """接受连接并注册到 user_id 索引。"""
@@ -94,32 +94,34 @@ class ConnectionManager:
                     if not conns_set:
                         self._connections.pop(user_id, None)
 
-    def register_online_coach(self, user_id: str) -> None:
-        """注册在线教练（教练上线时调用）。"""
+    def register_online_supplier(self, supplier_id: str) -> None:
+        """注册在线供给方（供给方上线时调用）。"""
         with self._lock:
-            self._online_coaches.add(user_id)
+            self._online_suppliers.add(supplier_id)
 
-    def unregister_online_coach(self, user_id: str) -> None:
-        """移除在线教练（教练下线时调用）。"""
+    def unregister_online_supplier(self, supplier_id: str) -> None:
+        """移除在线供给方（供给方下线时调用）。"""
         with self._lock:
-            self._online_coaches.discard(user_id)
+            self._online_suppliers.discard(supplier_id)
 
     @property
-    def online_coaches(self) -> set[str]:
-        """返回当前在线教练 user_id 集合的副本。"""
+    def online_suppliers(self) -> set[str]:
+        """返回当前在线供给方 user_id 集合的副本。"""
         with self._lock:
-            return set(self._online_coaches)
+            return set(self._online_suppliers)
 
-    async def broadcast_to_coaches(self, message: dict[str, Any], coach_ids: list[str]) -> None:
-        """广播消息给指定教练（用于按距离筛选后的定向推送）。"""
-        for uid in coach_ids:
+    async def broadcast_to_suppliers(
+        self, message: dict[str, Any], supplier_ids: list[str]
+    ) -> None:
+        """广播消息给指定供给方（用于按距离筛选后的定向推送）。"""
+        for uid in supplier_ids:
             await self.send_to_user(uid, message)
 
-    async def broadcast_to_online_coaches(self, message: dict[str, Any]) -> None:
-        """广播消息给所有在线教练。"""
+    async def broadcast_to_online_suppliers(self, message: dict[str, Any]) -> None:
+        """广播消息给所有在线供给方。"""
         with self._lock:
-            coach_ids = list(self._online_coaches)
-        await self.broadcast_to_coaches(message, coach_ids)
+            supplier_ids = list(self._online_suppliers)
+        await self.broadcast_to_suppliers(message, supplier_ids)
 
     async def disconnect_all(self) -> None:
         """关闭所有连接（应用停止时调用）。"""

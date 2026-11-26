@@ -91,7 +91,7 @@ class RealtimeCancelWorker:
                         },
                     }
                     try:
-                        await manager.broadcast_to_online_coaches(message)
+                        await manager.broadcast_to_online_suppliers(message)
                         self._expanded_task_ids.add(task.task_id)
                         logger.info("实时单 %s 扩展搜索范围（elapsed=%.1fs）", task.task_id, elapsed)
                     except Exception:
