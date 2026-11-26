@@ -1,6 +1,7 @@
 """陪驾订单 router（学员下单/取消/查询）。"""
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from umcp_core.core.base import User
 from umcp_core.core.deal import Deal, DealStatus
 from umcp_core.core.domain import DomainTag
+from umcp_core.core.resource import ResourceStatus
 from umcp_core.core.task import TaskStatus
 from umcp_core.events.bus import Event
 from umcp_core.events.types import EventType
@@ -26,6 +28,8 @@ from umcp_core.transport.schemas import Envelope, ok
 from ..tasks import EscortTask
 
 router = APIRouter(prefix="/api/v1/escort", tags=["escort-orders"])
+
+logger = logging.getLogger(__name__)
 
 # per-task_id 锁，确保抢单串行化（避免并发抢单竞态条件）
 _claim_locks: dict[str, threading.Lock] = {}
@@ -161,6 +165,137 @@ def _quote_deal(server: Any, task: Any, deal: Any) -> None:
             "supplier_amount": order.supplier_amount,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# 抢单准入（L7）
+#
+# 准入数据有两个来源：
+# - 用户档案：user.metadata["credentials"]
+# - L2 教练资源：resource.capabilities 中已认证且未过期的 certification
+#
+# 迁移策略（保证历史教练不被一次性拦死）：
+# 1. 平台尚未采集任何准入数据（无资源、无凭证声明、无评价）→ 放行并告警；
+# 2. 已声明资质但缺 coach_license → 拒绝（数据明确不具备该资质）；
+# 3. 有档案但尚无评价 → 只校验资质，信任分从宽（否则新教练永远接不到
+#    第一单，也就无法积累评价）；
+# 4. 有评价 → 完整走 server.rule_engine（plugin.json 的
+#    access_rule_expression）校验资质与信任分。
+# ---------------------------------------------------------------------------
+
+_REQUIRED_COACH_CREDENTIAL = "coach_license"
+_ADMISSION_TRUST_FLOOR = 4.0
+
+
+class _AdmissionUser(User):
+    """准入校验用的最小 User 实现（凭证来自档案与 L2 资源）。"""
+
+    def authenticate(self, credential: Any) -> bool:
+        return True
+
+
+def _coach_admission_profile(
+    server: Any, coach_id: str, task: Any
+) -> tuple[set[str], bool, bool, bool, bool, float]:
+    """汇总教练的准入数据。
+
+    Returns:
+        (credentials, credential_declared, resource_found,
+         resource_disabled, rated, trust_score)
+    """
+    credentials: set[str] = set()
+    credential_declared = False
+    user = server.user_repo.find_by_id(coach_id) if server.user_repo else None
+    if user is not None:
+        user_credentials = set(user.metadata.get("credentials") or [])
+        if user_credentials:
+            credential_declared = True
+            credentials.update(user_credentials)
+
+    resource_found = False
+    resource_disabled = False
+    resources = (
+        server.resource_repo.find_by_supplier(coach_id)
+        if server.resource_repo
+        else []
+    )
+    for resource in resources:
+        if resource.domain_tag.value != task.domain_tag.value:
+            continue
+        resource_found = True
+        if resource.status == ResourceStatus.DISABLED:
+            resource_disabled = True
+        for cap in resource.capabilities:
+            if cap.type != "certification":
+                continue
+            # 资源登记了资质即视为平台已采集资质数据：
+            # 未认证/已过期同样算「已声明但无效」，不能按缺失宽限。
+            credential_declared = True
+            if cap.is_valid():
+                credentials.add(cap.name)
+
+    engine = server.trust_engine_for(task.domain_tag.value)
+    profile = engine.evaluate(coach_id) if engine is not None else None
+    rated = profile is not None and any(
+        score > 0 for score in profile.dimension_scores.values()
+    )
+    return (
+        credentials,
+        credential_declared,
+        resource_found,
+        resource_disabled,
+        rated,
+        profile.overall_score if profile is not None else 0.0,
+    )
+
+
+def _check_claim_admission(server: Any, coach_id: str, task: Any) -> None:
+    """抢单前 L7 准入校验，未通过抛 403（不改变 Task/Deal）。"""
+    (
+        credentials,
+        credential_declared,
+        resource_found,
+        resource_disabled,
+        rated,
+        trust_score,
+    ) = _coach_admission_profile(server, coach_id, task)
+
+    if resource_disabled:
+        raise PermissionDeniedError(message="教练资源已被禁用，无法接单")
+
+    if not (resource_found or credential_declared or rated):
+        logger.warning(
+            "[ESCORT][ADMISSION] 教练 %s 无准入档案，按迁移宽限放行", coach_id
+        )
+        return
+
+    licensed = _REQUIRED_COACH_CREDENTIAL in credentials
+    if credential_declared and not licensed:
+        raise PermissionDeniedError(
+            message=f"未通过准入校验：缺少教练资质（{_REQUIRED_COACH_CREDENTIAL}）"
+        )
+
+    if not rated:
+        logger.info(
+            "[ESCORT][ADMISSION] 教练 %s 尚无评价记录，信任分从宽", coach_id
+        )
+        return
+
+    if licensed:
+        subject = _AdmissionUser(
+            user_id=coach_id,
+            metadata={"credentials": sorted(credentials)},
+        )
+        passed = server.rule_engine.check_access(subject, task)
+    else:
+        passed = trust_score >= _ADMISSION_TRUST_FLOOR
+    if not passed:
+        raise PermissionDeniedError(
+            message=(
+                f"未通过准入校验：信任分 {trust_score:.2f} "
+                f"低于要求 {_ADMISSION_TRUST_FLOOR}"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -659,9 +794,13 @@ async def claim_order(
         if task is None:
             raise NotFoundError(message=f"订单 {task_id} 不存在")
         task.bind_event_bus(server.event_bus)
+        if task.status not in ("published", "matching"):
+            raise IllegalStateError(
+                message=f"订单已被抢或状态不允许（当前: {task.status}）"
+            )
+        # L7 准入：凭证/资源/信任分不达标直接 403，订单保持 published
+        _check_claim_admission(server, req.coach_id, task)
         try:
-            if task.status not in ("published", "matching"):
-                raise RuntimeError(f"订单已被抢或状态不允许（当前: {task.status}）")
             task.assign_to(req.coach_id)
         except (RuntimeError, ValueError) as e:
             raise IllegalStateError(message=str(e)) from e

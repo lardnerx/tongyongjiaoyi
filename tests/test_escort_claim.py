@@ -18,12 +18,13 @@ def client_and_server():
     from umcp_core.transport.app import create_app
     from umcp_core.transport.config import TransportConfig
     from umcp_core.transport.auth import JwtService, _ClaimsUser, _ClaimsDemander, _ClaimsSupplier
-    from plugins.escort_driving import register_plugin
 
     server = UMCPServer()
     server.use_in_memory_repositories()
     server.set_auth_provider(PhoneAuthProvider())
-    register_plugin(server)
+    # 走完整插件加载：同时应用 plugin.json 的 access_rule_expression，
+    # 保证抢单准入测试覆盖真实的 L7 规则注册路径。
+    server.load_plugin("escort_driving")
     config = TransportConfig(jwt_secret="test-secret")
     app = create_app(server, config)
     client = TestClient(app)
@@ -255,3 +256,127 @@ def test_concurrent_claim_only_one_succeeds(client_and_server):
     assert status_codes.count(409) == 1, (
         f"期望恰好一个抢单失败（409），实际: {results}"
     )
+
+
+# ---------- L7 抢单准入测试 ----------
+
+
+def _register_coach(server, coach_id, *, certified=True, disabled=False):
+    """注册 L2 教练资源（默认具备有效 coach_license）。"""
+    from plugins.escort_driving.resources import CoachResource
+    from umcp_core.core.domain import DomainTag
+    from umcp_core.core.resource import Capability, ResourceStatus
+
+    capabilities = [
+        Capability(
+            type="certification",
+            name="coach_license",
+            value="A1",
+            verified=True,
+        )
+    ] if certified else []
+    resource = CoachResource(
+        supplier_id=coach_id,
+        domain_tag=DomainTag.of("escort"),
+        current_lat=39.9,
+        current_lng=116.4,
+        capabilities=capabilities,
+    )
+    if disabled:
+        resource.status = ResourceStatus.DISABLED
+    server.resource_repo.save(resource)
+    return resource
+
+
+def _record_rating(server, coach_id, score):
+    """写入一条历史评价，使教练进入「已评级」状态。"""
+    from umcp_core.layers.l5 import Evaluation
+
+    engine = server.trust_engine_for("escort")
+    engine.record_evaluation(
+        Evaluation(
+            evaluator_id="student_1",
+            evaluatee_id=coach_id,
+            task_id="history_task",
+            ratings={
+                "teaching_ability": score,
+                "patience": score,
+                "safety_record": score,
+            },
+        )
+    )
+
+
+def _claim(client, server, task_id, coach_id):
+    return client.post(
+        f"/api/v1/escort/orders/{task_id}/claim",
+        json={"coach_id": coach_id},
+        headers=_auth_headers(server, coach_id, roles=["supplier"]),
+    )
+
+
+def test_claim_rejected_when_coach_lacks_license(client_and_server):
+    """教练资源登记了资质但缺 coach_license：403，订单保持 published。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    from plugins.escort_driving.resources import CoachResource
+    from umcp_core.core.domain import DomainTag
+    from umcp_core.core.resource import Capability, ResourceStatus
+
+    resource = CoachResource(
+        supplier_id="coach_1",
+        domain_tag=DomainTag.of("escort"),
+        current_lat=39.9,
+        current_lng=116.4,
+        capabilities=[
+            Capability(
+                type="certification",
+                name="driver_license",
+                value="C1",
+                verified=True,
+            )
+        ],
+    )
+    resource.status = ResourceStatus.IDLE
+    server.resource_repo.save(resource)
+
+    resp = _claim(client, server, task_id, "coach_1")
+    assert resp.status_code == 403
+    assert server.task_repo.find_by_id(task_id).status == "published"
+    assert server.deal_repo.find_by_task(task_id) == []
+
+
+def test_claim_rejected_when_trust_score_below_floor(client_and_server):
+    """已评级且信任分低于 4.0：403，订单与交易均不变化。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    _register_coach(server, "coach_1")
+    _record_rating(server, "coach_1", 2.0)
+
+    resp = _claim(client, server, task_id, "coach_1")
+    assert resp.status_code == 403
+    assert server.task_repo.find_by_id(task_id).status == "published"
+    assert server.deal_repo.find_by_task(task_id) == []
+
+
+def test_claim_rejected_when_resource_disabled(client_and_server):
+    """教练资源被禁用：403。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    _register_coach(server, "coach_1", disabled=True)
+
+    resp = _claim(client, server, task_id, "coach_1")
+    assert resp.status_code == 403
+    assert server.task_repo.find_by_id(task_id).status == "published"
+
+
+def test_claim_allowed_for_licensed_coach_with_good_trust(client_and_server):
+    """资质齐全且信任分达标：抢单成功。"""
+    client, server = client_and_server
+    task_id = _create_order(client, server)
+    _register_coach(server, "coach_1")
+    _record_rating(server, "coach_1", 5.0)
+
+    resp = _claim(client, server, task_id, "coach_1")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "assigned"
