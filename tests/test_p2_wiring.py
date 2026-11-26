@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from umcp_core.core.deal import Deal
 from umcp_core.core.domain import DomainTag
 from umcp_core.core.resource import Resource, ResourceStatus
 from umcp_core.core.task import StandardTask, TaskStatus
@@ -13,6 +14,7 @@ from umcp_core.layers.l2 import RepositoryResourceRegistry
 from umcp_core.layers.l3 import InstantMatch, MatchResult
 from umcp_core.layers.l5 import WeightedSumTrustEngine
 from umcp_core.layers.l6 import IntelligenceModule, Prediction
+from umcp_core.layers.l7 import ArbitrationPolicy, ArbitrationResult
 from umcp_core.server import UMCPServer
 from umcp_core.transport.auth import JwtService
 from umcp_core.transport.errors import register_exception_handlers
@@ -166,6 +168,89 @@ class TestTrustEvaluationPersistence:
         ).json()["data"]
         assert aggregated["score"] == 4.0
         assert aggregated["domains"] == ["ride"]
+
+
+class TestDisputeArbitration:
+    @staticmethod
+    def _disputed_deal(server: UMCPServer) -> Deal:
+        deal = Deal(
+            task_id="task_1",
+            resource_id="res_1",
+            demander_id="u1",
+            supplier_id="u2",
+        )
+        deal.activate()
+        server.deal_repo.save(deal)
+        return deal
+
+    def test_dispute_produces_l7_proposal_and_arbitrate_applies_it(self) -> None:
+        server = _make_server()
+        deal = self._disputed_deal(server)
+        client = TestClient(_make_app(server))
+        headers = _login(client)
+
+        resp = client.post(
+            f"/api/v1/deals/{deal.deal_id}/dispute",
+            json={"reason": "服务未完成", "evidence": {"photo": "x.jpg"}},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["deal_status"] == "disputed"
+        assert data["outcome"] == "cancelled"  # 默认策略：发起人胜诉
+        stored = server.deal_repo.find_by_id(deal.deal_id).metadata["dispute"]
+        assert stored["reason"] == "服务未完成"
+        assert stored["evidence"] == {"photo": "x.jpg"}
+        assert stored["initiator_id"]
+        assert stored["arbitration"]["outcome"] == "cancelled"
+
+        resp = client.post(
+            f"/api/v1/deals/{deal.deal_id}/arbitrate", headers=headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["outcome"] == "cancelled"
+        assert data["deal_status"] == "cancelled"
+        assert server.deal_repo.find_by_id(deal.deal_id).status == "cancelled"
+
+    def test_custom_policy_outcome_is_applied(self) -> None:
+        class _CompletedPolicy(ArbitrationPolicy):
+            def arbitrate(self, dispute):
+                return ArbitrationResult(
+                    dispute_id=dispute.dispute_id,
+                    outcome="completed",
+                    penalty=5.0,
+                    reason="自定义策略：服务有效",
+                )
+
+        server = _make_server()
+        server.rule_engine.set_arbitration_policy(_CompletedPolicy())
+        deal = self._disputed_deal(server)
+        client = TestClient(_make_app(server))
+        headers = _login(client)
+
+        client.post(f"/api/v1/deals/{deal.deal_id}/dispute", headers=headers)
+        resp = client.post(
+            f"/api/v1/deals/{deal.deal_id}/arbitrate", headers=headers
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["outcome"] == "completed"
+        assert data["penalty"] == 5.0
+        assert data["deal_status"] == "completed"
+
+    def test_arbitrate_without_dispute_is_rejected(self) -> None:
+        server = _make_server()
+        deal = self._disputed_deal(server)
+        client = TestClient(_make_app(server))
+        headers = _login(client)
+
+        resp = client.post(
+            f"/api/v1/deals/{deal.deal_id}/arbitrate", headers=headers
+        )
+
+        assert resp.json()["code"] != 0
 
 
 class TestCompositeTaskApi:

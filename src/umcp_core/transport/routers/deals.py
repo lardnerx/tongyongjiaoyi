@@ -32,6 +32,20 @@ class ResolveDealRequest(BaseModel):
     outcome: str = "completed"
 
 
+class DisputeDealRequest(BaseModel):
+    reason: str = ""
+    evidence: dict[str, Any] = {}
+
+
+class ArbitrationInfo(BaseModel):
+    dispute_id: str
+    outcome: str
+    refund_amount: float = 0.0
+    penalty: float = 0.0
+    reason: str = ""
+    deal_status: str
+
+
 class DealInfo(BaseModel):
     deal_id: str
     task_id: str
@@ -169,13 +183,47 @@ async def complete_deal(
     return ok(message="已完成")
 
 
-@router.post("/{deal_id}/dispute", response_model=Envelope)
+def _build_dispute(
+    deal: Deal, initiator: User, req: DisputeDealRequest | None
+) -> "Dispute":
+    """由交易与请求构造 L7 争议记录。"""
+    from umcp_core.core.domain import generate_id
+    from umcp_core.layers.l7 import Dispute
+
+    respondent_id = (
+        deal.supplier_id
+        if initiator.user_id == deal.demander_id
+        else deal.demander_id
+    )
+    return Dispute(
+        dispute_id=generate_id("dispute"),
+        deal_id=deal.deal_id,
+        initiator_id=initiator.user_id,
+        respondent_id=respondent_id,
+        reason=req.reason if req else "",
+        evidence=dict(req.evidence or {}) if req else {},
+    )
+
+
+def _arbitration_info(result: Any, deal_status: str) -> ArbitrationInfo:
+    return ArbitrationInfo(
+        dispute_id=result.dispute_id,
+        outcome=result.outcome,
+        refund_amount=result.refund_amount,
+        penalty=result.penalty,
+        reason=result.reason,
+        deal_status=deal_status,
+    )
+
+
+@router.post("/{deal_id}/dispute", response_model=Envelope[ArbitrationInfo])
 async def dispute_deal(
     deal_id: str,
+    req: DisputeDealRequest | None = None,
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
-) -> Envelope:
-    """发起争议。"""
+) -> Envelope[ArbitrationInfo]:
+    """发起争议，并调用 L7 仲裁策略生成裁决建议（不自动执行）。"""
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
@@ -184,8 +232,71 @@ async def dispute_deal(
         deal.open_dispute()
     except (RuntimeError, ValueError) as e:
         raise IllegalStateError(message=str(e)) from e
+
+    dispute = _build_dispute(deal, current_user, req)
+    proposal = server.rule_engine.arbitrate(dispute)
+    deal.metadata["dispute"] = {
+        "dispute_id": dispute.dispute_id,
+        "initiator_id": dispute.initiator_id,
+        "respondent_id": dispute.respondent_id,
+        "reason": dispute.reason,
+        "evidence": dispute.evidence,
+        "status": dispute.status,
+        "arbitration": {
+            "outcome": proposal.outcome,
+            "refund_amount": proposal.refund_amount,
+            "penalty": proposal.penalty,
+            "reason": proposal.reason,
+        },
+    }
     server.deal_repo.save(deal)
-    return ok(message="争议已开启")
+    return ok(_arbitration_info(proposal, deal.status), message="争议已开启")
+
+
+@router.post("/{deal_id}/arbitrate", response_model=Envelope[ArbitrationInfo])
+async def arbitrate_deal(
+    deal_id: str,
+    server: UMCPServer = Depends(get_server),
+    current_user: User = Depends(get_current_user),
+) -> Envelope[ArbitrationInfo]:
+    """执行 L7 仲裁并落定交易状态。"""
+    from umcp_core.layers.l7 import Dispute
+
+    deal = server.deal_repo.find_by_id(deal_id)
+    if deal is None:
+        raise NotFoundError(message=f"交易 {deal_id} 不存在")
+    if deal.status != "disputed":
+        raise IllegalStateError(message=f"交易状态 {deal.status} 不在争议中，无法仲裁")
+
+    stored = deal.metadata.get("dispute") or {}
+    dispute = Dispute(
+        dispute_id=stored.get("dispute_id", ""),
+        deal_id=deal.deal_id,
+        initiator_id=stored.get("initiator_id", current_user.user_id),
+        respondent_id=stored.get("respondent_id", ""),
+        reason=stored.get("reason", ""),
+        evidence=stored.get("evidence", {}) or {},
+    )
+    result = server.rule_engine.arbitrate(dispute)
+
+    deal.bind_event_bus(server.event_bus)
+    try:
+        deal.resolve(outcome=result.outcome)
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+
+    dispute.status = "resolved"
+    stored.update(
+        status="resolved",
+        arbitration={
+            "outcome": result.outcome,
+            "refund_amount": result.refund_amount,
+            "penalty": result.penalty,
+            "reason": result.reason,
+        },
+    )
+    server.deal_repo.save(deal)
+    return ok(_arbitration_info(result, deal.status), message="仲裁已完成")
 
 
 @router.post("/{deal_id}/cancel", response_model=Envelope)
