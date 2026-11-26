@@ -27,50 +27,90 @@ PLUGIN_MANIFEST = {
     "domain": "escort",
     "task_types": ["escort_driving.tasks.EscortTask"],
     "resource_types": ["escort_driving.resources.CoachResource"],
-    "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
+    "match_strategy": {
+        "factory": "escort_driving.components.build_match_strategy"
+    },
+    "scheduled_match_strategy": {
+        "class": "escort_driving.scheduled_match.ScheduledMatchStrategy",
+        "params": {"top_n": 3},
+    },
+    "payment_schema": {
+        "factory": "escort_driving.components.build_payment_schema"
+    },
+    "trust_engine": {
+        "class": "umcp_core.layers.l5.WeightedSumTrustEngine",
+        "params": {"dimensions": ["teaching_ability", "patience", "safety_record"]},
+    },
     "trust_dimensions": ["teaching_ability", "patience", "safety_record"],
     "commission_rate": 0.20,
     "hourly_rate": 80.0,
+    "routers": ["escort_driving.api"],
+    "rule_defaults": {
+        "escort.cancel.realtime.timeout_seconds": 300,
+        "escort.cancel.realtime.expand_after_seconds": 30,
+        "escort.match.realtime.radius_km": 5.0,
+        "escort.pricing.car_type_hourly": {
+            "economy": 100.0,
+            "professional": 200.0,
+            "luxury": 500.0,
+            "business": 400.0,
+        },
+        "escort.pricing.default_hourly_rate": 80.0,
+        "escort.pricing.deposit_ratio": 0.3,
+        "escort.pricing.commission_rate": 0.20,
+        "escort.cancel.scheduled.penalty_tiers": [
+            {"hours_before": 24, "penalty": 0.2},
+            {"hours_before": 12, "penalty": 0.5},
+            {"hours_before": 4, "penalty": 1.0},
+            {"hours_before": 0, "penalty": 2.0},
+        ],
+        "payment.timeout_seconds": 1800,
+        "payment.cleanup_interval": 60,
+    },
+    "notification_templates": {
+        "DEAL_CREATED": {
+            "title": "新订单通知",
+            "body": "学员 {{ demander_name }} 已下单，请及时确认。订单编号：{{ deal_id }}",
+        },
+        "DEAL_CONFIRMED": {
+            "title": "订单已确认",
+            "body": "教练 {{ coach_name }} 已确认您的订单（{{ deal_id }}），请按时参加陪驾。",
+        },
+        "DEAL_REJECTED": {
+            "title": "订单被拒绝",
+            "body": "教练 {{ coach_name }} 拒绝了您的订单（{{ deal_id }}），原因：{{ reason }}。",
+        },
+        "PAYMENT_PAID": {
+            "title": "支付成功",
+            "body": "您的订单 {{ deal_id }} 已支付成功，金额 {{ amount }} 元。",
+        },
+        "DEAL_COMPLETED": {
+            "title": "服务已完成",
+            "body": "陪驾服务 {{ deal_id }} 已完成，请为对方评价。",
+        },
+        "DEAL_CANCELLED": {
+            "title": "订单已取消",
+            "body": "订单 {{ deal_id }} 已取消。",
+        },
+        "PAYMENT_REFUNDED": {
+            "title": "退款通知",
+            "body": "您的订单 {{ deal_id }} 已退款 {{ refund_amount }} 元。",
+        },
+    },
     "access_rule_expression": "hasCredential('coach_license') && trustScore >= 4.0",
 }
 
 
 def register_plugin(server: "UMCPServer") -> None:
-    """插件自定义初始化钩子。
+    """插件运行期初始化钩子。
 
-    按 domain 注册策略组件，同时更新单值属性作为兜底。
+    声明式装配（task_types / 匹配 / 计价 / 信任 / 预约策略 / 路由 /
+    规则默认值 / 通知模板）统一由 PLUGIN_MANIFEST 完成；本钩子只处理
+    需要运行时对象或外部配置的部分：支付服务、评价仓储兜底、调度 Worker、
+    限流豁免、通知中心与事件监听。
     """
-    domain = PLUGIN_MANIFEST["domain"]
-    from umcp_core.layers.l3 import CredentialFilter, InstantMatch
-    from umcp_core.layers.l5 import WeightedSumTrustEngine
-    from escort_driving.pricing import EscortPaymentSchema
-    from escort_driving.scoring import EscortMatchScorer
-    from escort_driving.scheduled_match import ScheduledMatchStrategy
-
-    server.register_match_strategy(
-        domain,
-        InstantMatch(
-            scorer=EscortMatchScorer(),
-            filters=[CredentialFilter(required_credentials=["coach_license"])],
-        ),
-    )
-    server.register_payment_schema(
-        domain,
-        EscortPaymentSchema(
-            config_provider=lambda: getattr(server, "rule_config", None),
-            hourly_rate=PLUGIN_MANIFEST["hourly_rate"],
-            commission_rate=PLUGIN_MANIFEST["commission_rate"],
-        ),
-    )
-    server.register_trust_engine(
-        domain,
-        WeightedSumTrustEngine(dimensions=PLUGIN_MANIFEST["trust_dimensions"]),
-    )
-    # 预约单 Top N 推荐策略（与实时单 InstantMatch 区分，供 router 调用）
-    server.register_scheduled_match_strategy(
-        domain,
-        ScheduledMatchStrategy(top_n=3),
-    )
+    # 直接调用 register_plugin（未经 load_plugin）时补齐声明式装配；幂等
+    server.apply_manifest(PLUGIN_MANIFEST)
     # 注册支付服务（根据配置选择 WeChatPayGateway 或 MockGateway）
     from umcp_core.shared.payment.repository import InMemoryPaymentRepository
     from umcp_core.shared.payment.service import PaymentService
@@ -109,39 +149,8 @@ def register_plugin(server: "UMCPServer") -> None:
     if getattr(server, "review_repo", None) is None:
         server.review_repo = InMemoryReviewRepository()
     logger.info("评价仓储: %s", type(server.review_repo).__name__)
-    # 注册规则配置中心（持久化仓储 + 默认值预加载，挂载到 server.rule_config）
-    from umcp_core.shared.rules.config import RuleConfig
-    from umcp_core.shared.rules.repository import InMemoryRuleRepository
-
-    # 生产环境使用 server 注入的持久化仓储；未注入时回退内存实现
-    rule_config = RuleConfig(repo=getattr(server, "rule_repo", None) or InMemoryRuleRepository())
-    logger.info("规则仓储: %s", type(rule_config._repo).__name__)
-    rule_config.set_defaults(
-        {
-            "escort.cancel.realtime.timeout_seconds": 300,
-            "escort.cancel.realtime.expand_after_seconds": 30,
-            "escort.match.realtime.radius_km": 5.0,   # 实时单首轮推送半径（<=0 不限）
-            # 计价规则（运营后台可改，改价只影响新成交订单）
-            "escort.pricing.car_type_hourly": {
-                "economy": 100.0,
-                "professional": 200.0,
-                "luxury": 500.0,
-                "business": 400.0,
-            },
-            "escort.pricing.default_hourly_rate": 80.0,
-            "escort.pricing.deposit_ratio": 0.3,
-            "escort.pricing.commission_rate": 0.20,
-            "escort.cancel.scheduled.penalty_tiers": [
-                {"hours_before": 24, "penalty": 0.2},
-                {"hours_before": 12, "penalty": 0.5},
-                {"hours_before": 4, "penalty": 1.0},
-                {"hours_before": 0, "penalty": 2.0},
-            ],
-            "payment.timeout_seconds": 1800,      # 30 分钟未支付自动关闭
-            "payment.cleanup_interval": 60,        # 清理 Worker 扫描间隔（秒）
-        }
-    )
-    server.rule_config = rule_config
+    # 规则配置中心由清单 rule_defaults 声明、核心统一创建
+    logger.info("规则仓储: %s", type(server.rule_config._repo).__name__)
 
     # 行业调度 Worker：实时单超时取消与扩圈推送（核心库只负责调度，不感知规则）
     from .workers.realtime_cancel import RealtimeCancelWorker
@@ -154,16 +163,6 @@ def register_plugin(server: "UMCPServer") -> None:
     # 通知中心初始化
     # ================================================================
     _setup_notification_center(server)
-
-    # ================================================================
-    # 行业 HTTP 路由注册
-    # ================================================================
-    # 核心库不感知陪驾业务路径，路由随插件注册、由 create_app 统一挂载。
-    from .api import ROUTERS
-
-    for router in ROUTERS:
-        server.register_router(router)
-    logger.info("[ROUTER] 陪驾业务路由已注册: %d 个", len(ROUTERS))
 
 
 def _setup_notification_center(server: "UMCPServer") -> None:
@@ -193,8 +192,8 @@ def _setup_notification_center(server: "UMCPServer") -> None:
     # 3. 注册短信渠道
     _setup_sms_channel(server, center)
 
-    # 4. 注册通知模板
-    _register_templates(center)
+    # 4. 注册通知模板（由清单 notification_templates 声明）
+    _register_templates(server, center)
 
     # 5. 注册事件监听器
     _register_event_listeners(server, center)
@@ -298,45 +297,9 @@ def _make_phone_resolver(server: "UMCPServer"):
     return resolve
 
 
-def _register_templates(center: "NotificationCenter") -> None:
-    """注册陪驾业务通知模板。"""
-    templates = {
-        # 订单创建 → 通知教练
-        "DEAL_CREATED": {
-            "title": "新订单通知",
-            "body": "学员 {{ demander_name }} 已下单，请及时确认。订单编号：{{ deal_id }}",
-        },
-        # 教练确认 → 通知学员
-        "DEAL_CONFIRMED": {
-            "title": "订单已确认",
-            "body": "教练 {{ coach_name }} 已确认您的订单（{{ deal_id }}），请按时参加陪驾。",
-        },
-        # 教练拒绝 → 通知学员
-        "DEAL_REJECTED": {
-            "title": "订单被拒绝",
-            "body": "教练 {{ coach_name }} 拒绝了您的订单（{{ deal_id }}），原因：{{ reason }}。",
-        },
-        # 支付成功 → 通知学员
-        "PAYMENT_PAID": {
-            "title": "支付成功",
-            "body": "您的订单 {{ deal_id }} 已支付成功，金额 {{ amount }} 元。",
-        },
-        # 服务完成 → 通知双方
-        "DEAL_COMPLETED": {
-            "title": "服务已完成",
-            "body": "陪驾服务 {{ deal_id }} 已完成，请为对方评价。",
-        },
-        # 订单取消 → 通知双方
-        "DEAL_CANCELLED": {
-            "title": "订单已取消",
-            "body": "订单 {{ deal_id }} 已取消。",
-        },
-        # 退款 → 通知学员
-        "PAYMENT_REFUNDED": {
-            "title": "退款通知",
-            "body": "您的订单 {{ deal_id }} 已退款 {{ refund_amount }} 元。",
-        },
-    }
+def _register_templates(server: "UMCPServer", center: "NotificationCenter") -> None:
+    """注册清单声明的业务通知模板。"""
+    templates = getattr(server, "notification_templates", {}) or {}
     for event_type, tpl in templates.items():
         center.register_template(event_type, tpl["title"], tpl["body"])
     logger.info("[NOTIFY] 已注册 %d 个通知模板", len(templates))

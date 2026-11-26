@@ -112,6 +112,10 @@ class UMCPServer:
         self.trust_repo: TrustRepository | None = None
         self.event_repo: EventRepository | None = None
         self.rule_repo: RuleRepository | None = None
+        # 规则配置中心（由插件清单的 rule_defaults 声明后由核心创建）
+        self.rule_config: Any = None
+        # 插件声明的通知模板（event_type -> {title, body}）
+        self.notification_templates: dict[str, Any] = {}
         self.payment_repo: (
             InMemoryPaymentRepository | PostgresPaymentRepository | None
         ) = None
@@ -146,6 +150,8 @@ class UMCPServer:
         self._scheduler_workers: list[Any] = []
         # 插件注册的限流豁免路径（如第三方支付回调，由 create_app 交给中间件）
         self._rate_limit_exempt_paths: list[str] = []
+        # 已应用声明的插件名（避免 load_plugin 与 register_plugin 重复装配）
+        self._applied_plugin_names: set[str] = set()
         self._started: bool = False
 
         # 注册全局事件审计
@@ -404,6 +410,19 @@ class UMCPServer:
     # 插件加载
     # ------------------------------------------------------------------
 
+    def apply_manifest(self, manifest: dict[str, Any]) -> None:
+        """应用插件清单（幂等）。
+
+        供 ``register_plugin`` 钩子在「直接调用、未经 load_plugin」时补齐声明式
+        装配；同一插件名只会应用一次，避免路由/规则重复注册。
+        """
+        name = str(manifest.get("name", "unknown"))
+        if name in self._applied_plugin_names:
+            return
+        descriptor = PluginDescriptor(manifest, Path(name))
+        self._apply_manifest(descriptor)
+        self._plugins.append(descriptor)
+
     def load_plugin(self, plugin_path: str | Path) -> PluginDescriptor:
         """加载行业插件。
 
@@ -466,38 +485,64 @@ class UMCPServer:
         else:
             domains = [str(d).lower() for d in domain_field]
 
+        # 规则默认值（先创建/补齐 RuleConfig，供组件工厂读取）
+        if "rule_defaults" in manifest:
+            if self.rule_config is None:
+                from umcp_core.shared.rules.config import RuleConfig
+
+                self.rule_config = RuleConfig(
+                    repo=self.rule_repo or InMemoryRuleRepository()
+                )
+            self.rule_config.set_defaults(manifest["rule_defaults"])
+
         # 注册任务类型
         for task_type_path in manifest.get("task_types", []):
             cls = _import_class(task_type_path)
             type_name = getattr(cls, "_task_type_name", cls.__name__.lower())
             self.task_factory.register_builder(type_name, cls)
 
-        # 注入匹配策略
+        # 注入匹配策略（字符串 / class+params / factory 三种声明）
         if "match_strategy" in manifest:
-            cls = _import_class(manifest["match_strategy"])
-            instance = cls()
+            instance = _instantiate_declared(manifest["match_strategy"], self)
             self.match_strategy = instance
             for d in domains:
                 self._match_strategies[d] = instance
 
         # 注入支付模式
         if "payment_schema" in manifest:
-            cls = _import_class(manifest["payment_schema"])
-            instance = cls()
+            instance = _instantiate_declared(manifest["payment_schema"], self)
             self.payment_schema = instance
             for d in domains:
                 self._payment_schemas[d] = instance
 
         # 注入信任引擎（通过 register_trust_engine 同步到 RuleEngine）
         if "trust_engine" in manifest:
-            cls = _import_class(manifest["trust_engine"])
-            instance = cls()
+            instance = _instantiate_declared(manifest["trust_engine"], self)
             if domains:
                 for d in domains:
                     self.register_trust_engine(d, instance)
             else:
                 # 无 domain 时仅更新单值属性（保持原行为）
                 self.trust_engine = instance
+
+        # 注入预约单匹配策略
+        if "scheduled_match_strategy" in manifest:
+            instance = _instantiate_declared(
+                manifest["scheduled_match_strategy"], self
+            )
+            for d in domains:
+                self.register_scheduled_match_strategy(d, instance)
+
+        # 挂载插件业务路由（声明为模块路径，模块内暴露 ROUTERS）
+        for module_path in manifest.get("routers", []):
+            module = importlib.import_module(module_path)
+            for router in getattr(module, "ROUTERS", []):
+                self.register_router(router)
+
+        # 通知模板（event_type -> {title, body}）
+        templates = manifest.get("notification_templates")
+        if templates:
+            self.notification_templates.update(templates)
 
         # 配置准入规则（按 domain 注册，无 domain 时全局生效）
         if "access_rule_expression" in manifest:
@@ -509,6 +554,8 @@ class UMCPServer:
                     self.rule_engine.add_access_rule(rule, domain=d)
             else:
                 self.rule_engine.add_access_rule(rule)
+
+        self._applied_plugin_names.add(descriptor.name)
 
     # ------------------------------------------------------------------
     # 复合任务编排
@@ -888,3 +935,26 @@ def _import_class(dotted_path: str) -> type:
     if not hasattr(module, class_name):
         raise AttributeError(f"模块 {module_path} 中未找到类 {class_name}")
     return getattr(module, class_name)
+
+
+def _instantiate_declared(spec: Any, server: "UMCPServer") -> Any:
+    """按清单声明实例化组件。
+
+    支持三种写法：
+    - "pkg.mod.ClassName"：无参构造
+    - {"class": "pkg.mod.ClassName", "params": {...}}：带静态参数构造
+    - {"factory": "pkg.mod.build_component", "params": {...}}：
+      调用工厂函数，签名为 ``factory(server, **params)``，用于需要运行时
+      注入（如读取 server.rule_config）的组件
+    """
+    if isinstance(spec, str):
+        return _import_class(spec)()
+    if not isinstance(spec, dict):
+        raise TypeError(f"无效的组件声明: {spec!r}")
+
+    params = dict(spec.get("params") or {})
+    if "factory" in spec:
+        return _import_class(spec["factory"])(server, **params)
+    if "class" in spec:
+        return _import_class(spec["class"])(**params)
+    raise ValueError(f"组件声明缺少 class 或 factory: {spec!r}")

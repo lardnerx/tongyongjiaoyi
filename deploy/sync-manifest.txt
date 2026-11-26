@@ -30,6 +30,8 @@ src/umcp_core/transport/routers/__init__.py
 src/umcp_core/transport/routers/admin/rules.py
 src/umcp_core/transport/ws.py
 plugins/escort_driving/__init__.py
+plugins/escort_driving/plugin.json
+plugins/escort_driving/components.py
 plugins/escort_driving/tasks.py
 plugins/escort_driving/pricing.py
 plugins/escort_driving/workers/__init__.py

@@ -4,9 +4,75 @@
   "domain": "escort",
   "task_types": ["escort_driving.tasks.EscortTask"],
   "resource_types": ["escort_driving.resources.CoachResource"],
-  "match_strategy": "umcp_core.layers.l3.matching.InstantMatch",
+  "match_strategy": {
+    "factory": "escort_driving.components.build_match_strategy"
+  },
+  "scheduled_match_strategy": {
+    "class": "escort_driving.scheduled_match.ScheduledMatchStrategy",
+    "params": {"top_n": 3}
+  },
+  "payment_schema": {
+    "factory": "escort_driving.components.build_payment_schema"
+  },
+  "trust_engine": {
+    "class": "umcp_core.layers.l5.WeightedSumTrustEngine",
+    "params": {"dimensions": ["teaching_ability", "patience", "safety_record"]}
+  },
   "trust_dimensions": ["teaching_ability", "patience", "safety_record"],
-  "commission_rate": 0.20,
+  "commission_rate": 0.2,
   "hourly_rate": 80.0,
+  "routers": ["escort_driving.api"],
+  "rule_defaults": {
+    "escort.cancel.realtime.timeout_seconds": 300,
+    "escort.cancel.realtime.expand_after_seconds": 30,
+    "escort.match.realtime.radius_km": 5.0,
+    "escort.pricing.car_type_hourly": {
+      "economy": 100.0,
+      "professional": 200.0,
+      "luxury": 500.0,
+      "business": 400.0
+    },
+    "escort.pricing.default_hourly_rate": 80.0,
+    "escort.pricing.deposit_ratio": 0.3,
+    "escort.pricing.commission_rate": 0.2,
+    "escort.cancel.scheduled.penalty_tiers": [
+      {"hours_before": 24, "penalty": 0.2},
+      {"hours_before": 12, "penalty": 0.5},
+      {"hours_before": 4, "penalty": 1.0},
+      {"hours_before": 0, "penalty": 2.0}
+    ],
+    "payment.timeout_seconds": 1800,
+    "payment.cleanup_interval": 60
+  },
+  "notification_templates": {
+    "DEAL_CREATED": {
+      "title": "新订单通知",
+      "body": "学员 {{ demander_name }} 已下单，请及时确认。订单编号：{{ deal_id }}"
+    },
+    "DEAL_CONFIRMED": {
+      "title": "订单已确认",
+      "body": "教练 {{ coach_name }} 已确认您的订单（{{ deal_id }}），请按时参加陪驾。"
+    },
+    "DEAL_REJECTED": {
+      "title": "订单被拒绝",
+      "body": "教练 {{ coach_name }} 拒绝了您的订单（{{ deal_id }}），原因：{{ reason }}。"
+    },
+    "PAYMENT_PAID": {
+      "title": "支付成功",
+      "body": "您的订单 {{ deal_id }} 已支付成功，金额 {{ amount }} 元。"
+    },
+    "DEAL_COMPLETED": {
+      "title": "服务已完成",
+      "body": "陪驾服务 {{ deal_id }} 已完成，请为对方评价。"
+    },
+    "DEAL_CANCELLED": {
+      "title": "订单已取消",
+      "body": "订单 {{ deal_id }} 已取消。"
+    },
+    "PAYMENT_REFUNDED": {
+      "title": "退款通知",
+      "body": "您的订单 {{ deal_id }} 已退款 {{ refund_amount }} 元。"
+    }
+  },
   "access_rule_expression": "hasCredential('coach_license') && trustScore >= 4.0"
 }
