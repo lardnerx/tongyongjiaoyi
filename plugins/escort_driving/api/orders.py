@@ -163,6 +163,137 @@ def _quote_deal(server: Any, task: Any, deal: Any) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# 履约状态同步
+#
+# Task 是履约权威源：published → assigned → in_progress → completed；
+# Deal 是资金/确认权威源：pending → active → in_service → completed。
+# 两者通过 task_id 一一绑定。所有签到/签退入口都必须走下面的函数，
+# 避免出现「Task 已完成、Deal 还在服务中」这类状态分叉。
+# ---------------------------------------------------------------------------
+
+
+def _sync_deal_status(server: Any, deal: Deal | None, target: str) -> bool:
+    """把 Deal 推进到 target，必要时补齐中间态；返回是否发生变化。
+
+    已处于终态（cancelled / resolved）的交易拒绝继续履约，避免给已取消订单
+    提供服务。
+    """
+    if deal is None or deal.status == target:
+        return False
+    if deal.status in (DealStatus.CANCELLED, DealStatus.RESOLVED):
+        raise IllegalStateError(message=f"交易状态 {deal.status} 不允许继续履约")
+
+    deal.bind_event_bus(server.event_bus)
+    changed = False
+    try:
+        while deal.status != target:
+            if deal.status == DealStatus.PENDING:
+                deal.activate()
+            elif deal.status == DealStatus.ACTIVE:
+                if target == DealStatus.COMPLETED:
+                    deal.complete()
+                else:
+                    deal.check_in()
+            elif deal.status == DealStatus.IN_SERVICE:
+                deal.complete()
+            else:
+                break
+            changed = True
+    except (RuntimeError, ValueError) as e:
+        raise IllegalStateError(message=str(e)) from e
+    if changed:
+        server.deal_repo.save(deal)
+    return changed
+
+
+def apply_check_in(
+    server: Any,
+    task: Any | None,
+    deal: Deal | None,
+    coach_id: str = "",
+    lat: float | None = None,
+    lng: float | None = None,
+) -> None:
+    """签到：Task assigned → in_progress，Deal 跟随到 in_service。
+
+    重复签到幂等（网络重试不应报错）。历史无 Task 的旧交易（task 为 None）
+    只推进 Deal，保证兼容。
+    """
+    task_started = False
+    if task is not None:
+        if task.status == TaskStatus.IN_PROGRESS:
+            pass
+        elif task.status == TaskStatus.ASSIGNED:
+            task.bind_event_bus(server.event_bus)
+            try:
+                task.start_execution()
+            except (RuntimeError, ValueError) as e:
+                raise IllegalStateError(message=str(e)) from e
+            task.structured_fields["check_in_at"] = _iso_utc(datetime.utcnow())
+            server.task_repo.save(task)
+            task_started = True
+        else:
+            raise IllegalStateError(message=f"订单状态 {task.status} 不允许签到")
+
+    _sync_deal_status(server, deal, DealStatus.IN_SERVICE)
+
+    if task_started and task is not None:
+        server.event_bus.publish(
+            Event(
+                type=EventType.TASK_IN_SERVICE,
+                source_layer="ESCORT",
+                payload={
+                    "task_id": task.task_id,
+                    "demander_id": task.demander_id,
+                    "coach_id": coach_id,
+                    "lat": lat,
+                    "lng": lng,
+                },
+            )
+        )
+
+
+def apply_check_out(
+    server: Any,
+    task: Any | None,
+    deal: Deal | None,
+) -> None:
+    """签退：Task in_progress → completed，Deal 跟随到 completed。
+
+    重复签退幂等；历史无 Task 的旧交易只推进 Deal。
+    """
+    if task is not None:
+        if task.status == TaskStatus.COMPLETED:
+            pass
+        elif task.status == TaskStatus.IN_PROGRESS:
+            task.bind_event_bus(server.event_bus)
+            try:
+                task.complete()
+            except (RuntimeError, ValueError) as e:
+                raise IllegalStateError(message=str(e)) from e
+            now = datetime.utcnow()
+            task.structured_fields["check_out_at"] = _iso_utc(now)
+            # 记录实际服务时长，供结算页使用
+            check_in_raw = task.structured_fields.get("check_in_at")
+            if check_in_raw:
+                try:
+                    check_in_dt = datetime.fromisoformat(check_in_raw)
+                    if check_in_dt.tzinfo is not None:
+                        check_in_dt = check_in_dt.astimezone(timezone.utc).replace(
+                            tzinfo=None
+                        )
+                    actual_hours = (now - check_in_dt).total_seconds() / 3600
+                    task.custom_fields["actual_hours"] = round(actual_hours, 2)
+                except (ValueError, TypeError):
+                    pass
+            server.task_repo.save(task)
+        else:
+            raise IllegalStateError(message=f"订单状态 {task.status} 不允许签退")
+
+    _sync_deal_status(server, deal, DealStatus.COMPLETED)
+
+
 def _task_to_order_info(task: EscortTask) -> OrderInfo:
     return OrderInfo(
         task_id=task.task_id,
@@ -579,7 +710,7 @@ async def check_in_order(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """教练签到：assigned → in_progress。"""
+    """教练签到：assigned → in_progress（Deal 同步 active → in_service）。"""
     # 越权校验：只能操作自己的订单
     if current_user.user_id != req.coach_id:
         raise PermissionDeniedError(message="只能操作自己的订单")
@@ -587,39 +718,13 @@ async def check_in_order(
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
-    task.bind_event_bus(server.event_bus)
-    try:
-        task.start_execution()
-    except (RuntimeError, ValueError) as e:
-        raise IllegalStateError(message=str(e)) from e
-    task.structured_fields["check_in_at"] = _iso_utc(datetime.utcnow())
-    server.task_repo.save(task)
-
-    # 同步交易状态：ACTIVE → IN_SERVICE
     deal = _latest_deal(server, task_id)
-    if deal is not None and deal.status == DealStatus.ACTIVE:
-        deal.bind_event_bus(server.event_bus)
-        try:
-            deal.check_in()
-            server.deal_repo.save(deal)
-        except (RuntimeError, ValueError):
-            pass
+    apply_check_in(server, task, deal, req.coach_id, req.lat, req.lng)
 
-    # 推送签到事件给学员
-    server.event_bus.publish(
-        Event(
-            type=EventType.TASK_IN_SERVICE,
-            source_layer="ESCORT",
-            payload={
-                "task_id": task_id,
-                "demander_id": task.demander_id,
-                "coach_id": req.coach_id,
-                "lat": req.lat,
-                "lng": req.lng,
-            },
-        )
-    )
-    return ok(_task_to_order_info(task).model_dump())
+    info = _task_to_order_info(task)
+    if deal is not None:
+        info.deal_id = deal.deal_id
+    return ok(info.model_dump())
 
 
 @router.post("/orders/{task_id}/check-out", response_model=Envelope)
@@ -629,7 +734,7 @@ async def check_out_order(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """教练签退：in_progress → completed。"""
+    """教练签退：in_progress → completed（Deal 同步 in_service → completed）。"""
     # 越权校验：只能操作自己的订单
     if current_user.user_id != req.coach_id:
         raise PermissionDeniedError(message="只能操作自己的订单")
@@ -637,35 +742,8 @@ async def check_out_order(
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
-    task.bind_event_bus(server.event_bus)
-    try:
-        task.complete()
-    except (RuntimeError, ValueError) as e:
-        raise IllegalStateError(message=str(e)) from e
-    now = datetime.utcnow()
-    task.structured_fields["check_out_at"] = _iso_utc(now)
-    # 记录实际服务时长，供结算页使用
-    check_in_raw = task.structured_fields.get("check_in_at")
-    if check_in_raw:
-        try:
-            check_in_dt = datetime.fromisoformat(check_in_raw)
-            if check_in_dt.tzinfo is not None:
-                check_in_dt = check_in_dt.astimezone(timezone.utc).replace(tzinfo=None)
-            actual_hours = (now - check_in_dt).total_seconds() / 3600
-            task.custom_fields["actual_hours"] = round(actual_hours, 2)
-        except (ValueError, TypeError):
-            pass
-    server.task_repo.save(task)
-
-    # 同步交易状态：IN_SERVICE → COMPLETED
     deal = _latest_deal(server, task_id)
-    if deal is not None and deal.status == DealStatus.IN_SERVICE:
-        deal.bind_event_bus(server.event_bus)
-        try:
-            deal.check_out()
-            server.deal_repo.save(deal)
-        except (RuntimeError, ValueError):
-            pass
+    apply_check_out(server, task, deal)
 
     info = _task_to_order_info(task)
     if deal is not None:

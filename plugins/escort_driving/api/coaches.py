@@ -14,6 +14,8 @@ from umcp_core.transport.deps import get_current_user, get_server
 from umcp_core.transport.errors import IllegalStateError, NotFoundError
 from umcp_core.transport.schemas import Envelope, ok
 
+from .orders import apply_check_in, apply_check_out
+
 router = APIRouter(prefix="/api/v1/escort/coaches", tags=["escort-coaches"])
 
 
@@ -82,16 +84,15 @@ async def check_in(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """教练签到：ACTIVE → IN_SERVICE。"""
+    """教练签到（按 Deal 维度）：与 /orders/{task_id}/check-in 共用同一实现。
+
+    Task 与 Deal 双向同步，返回 Deal 状态。历史无 Task 的旧交易只推进 Deal。
+    """
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
-    deal.bind_event_bus(server.event_bus)
-    try:
-        deal.check_in()
-    except (RuntimeError, ValueError) as e:
-        raise IllegalStateError(message=str(e)) from e
-    server.deal_repo.save(deal)
+    task = server.task_repo.find_by_id(deal.task_id)
+    apply_check_in(server, task, deal, req.coach_id, req.lat, req.lng)
     server.event_bus.publish(
         Event(
             type=EventType.CHECK_IN,
@@ -114,16 +115,12 @@ async def check_out(
     server: UMCPServer = Depends(get_server),
     current_user: User = Depends(get_current_user),
 ) -> Envelope:
-    """教练签退：IN_SERVICE → COMPLETED。"""
+    """教练签退（按 Deal 维度）：与 /orders/{task_id}/check-out 共用同一实现。"""
     deal = server.deal_repo.find_by_id(deal_id)
     if deal is None:
         raise NotFoundError(message=f"交易 {deal_id} 不存在")
-    deal.bind_event_bus(server.event_bus)
-    try:
-        deal.check_out()
-    except (RuntimeError, ValueError) as e:
-        raise IllegalStateError(message=str(e)) from e
-    server.deal_repo.save(deal)
+    task = server.task_repo.find_by_id(deal.task_id)
+    apply_check_out(server, task, deal)
     server.event_bus.publish(
         Event(
             type=EventType.CHECK_OUT,

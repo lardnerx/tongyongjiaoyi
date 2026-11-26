@@ -109,3 +109,98 @@ def test_coach_check_out(authed_client):
     )
     assert resp.status_code == 200
     assert resp.json()["data"]["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Task / Deal 状态一致性：两个签到入口必须同步推进 Task 与 Deal
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def claimed_order(authed_client):
+    """实时单：下单 → 抢单，返回 (client, task_id, deal_id, uid, server)。"""
+    client = authed_client
+    server = client.app.state.server
+    uid = client.get("/api/v1/auth/me").json()["data"]["user_id"]
+
+    created = client.post(
+        "/api/v1/escort/orders",
+        json={
+            "demander_id": uid,
+            "domain_tag": "escort",
+            "origin_lat": 39.9042,
+            "origin_lng": 116.4074,
+            "car_type": "AUTO",
+            "required_skills": ["escort"],
+            "duration_hours": 2,
+            "order_type": "REALTIME",
+        },
+    )
+    task_id = created.json()["data"]["task_id"]
+    claimed = client.post(
+        f"/api/v1/escort/orders/{task_id}/claim", json={"coach_id": uid}
+    )
+    deal_id = claimed.json()["data"]["deal_id"]
+    return client, task_id, deal_id, uid, server
+
+
+def test_deal_check_in_advances_bound_task(claimed_order):
+    """Deal 维度签到同时把绑定的 Task 推进到 in_progress。"""
+    client, task_id, deal_id, uid, server = claimed_order
+
+    resp = client.post(
+        f"/api/v1/escort/coaches/deals/{deal_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "in_service"
+
+    task = server.task_repo.find_by_id(task_id)
+    assert task.status == "in_progress"
+    assert task.structured_fields.get("check_in_at")
+
+
+def test_deal_check_out_advances_bound_task(claimed_order):
+    """Deal 维度签退同时把绑定的 Task 推进到 completed。"""
+    client, task_id, deal_id, uid, server = claimed_order
+
+    client.post(
+        f"/api/v1/escort/coaches/deals/{deal_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    resp = client.post(
+        f"/api/v1/escort/coaches/deals/{deal_id}/check-out",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "completed"
+
+    task = server.task_repo.find_by_id(task_id)
+    assert task.status == "completed"
+    assert task.structured_fields.get("check_out_at")
+
+
+def test_orders_check_in_out_after_deal_entry_is_idempotent(claimed_order):
+    """先走 Deal 入口再走订单入口：重复签到/签退保持幂等，状态不分叉。"""
+    client, task_id, deal_id, uid, server = claimed_order
+
+    client.post(
+        f"/api/v1/escort/coaches/deals/{deal_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    check_in = client.post(
+        f"/api/v1/escort/orders/{task_id}/check-in",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert check_in.status_code == 200
+    assert check_in.json()["data"]["status"] == "in_progress"
+    assert server.deal_repo.find_by_id(deal_id).status == "in_service"
+
+    check_out = client.post(
+        f"/api/v1/escort/orders/{task_id}/check-out",
+        json={"coach_id": uid, "lat": 39.9, "lng": 116.4},
+    )
+    assert check_out.status_code == 200
+    assert check_out.json()["data"]["status"] == "completed"
+    assert server.deal_repo.find_by_id(deal_id).status == "completed"
+
