@@ -3,7 +3,9 @@
 # /opt/umcp/deploy/verify.sh —— 部署后验证脚本
 #
 # 针对本轮架构整改（P0-1～P0-4、P1-5～P1-9、P2-10～P2-12）逐项验证：
-#   A. 运行态接口（只读）：健康检查、就绪检查、OpenAPI 新增路由
+#   A. 运行态接口（只读）：健康检查、就绪检查、新增路由存在性
+#      （公网 /openapi.json 通常被登录门禁拦截，故按状态码探测路由：
+#       401/403/422 = 路由存在，404 = 缺失，405 = 方法不匹配）
 #   B. 插件声明式装配：匹配/计价/信任/预约策略/路由/规则默认值/通知模板
 #   C. 核心接线：ResourceRegistry、L6 推荐入口、L7 仲裁、复合任务/争议路由
 #
@@ -34,6 +36,10 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# 容忍粘贴时带上的反引号/引号/空白与末尾斜杠
+BASE_URL="$(printf '%s' "$BASE_URL" | sed "s/[[:space:]\`\"']//g")"
+BASE_URL="${BASE_URL%/}"
+
 PASS=0
 FAIL=0
 SKIP=0
@@ -46,10 +52,6 @@ title(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 # ---------------------------------------------------------------------------
 # A. 运行态接口（只读）
 # ---------------------------------------------------------------------------
-http_get() {
-    curl -sS -m "$CURL_TIMEOUT" "$1" 2>/dev/null || true
-}
-
 check_http() {
     title "A. 运行态接口（$BASE_URL）"
 
@@ -70,27 +72,25 @@ check_http() {
         bad "GET /api/v1/health/ready 异常（http=${code:-N/A}）"
     fi
 
-    local spec
-    spec="$(http_get "$BASE_URL/openapi.json")"
-    if [ -z "$spec" ]; then
-        bad "GET /openapi.json 无响应，无法核对路由"
-        return
-    fi
-    local path
-    for path in \
-        "/api/v1/lbs/nearby" \
-        "/api/v1/lbs/resources/{resource_id}/location" \
-        "/api/v1/tasks/composite" \
-        "/api/v1/deals/{deal_id}/dispute" \
-        "/api/v1/deals/{deal_id}/arbitrate" \
-        "/api/v1/trust/profiles/{user_id}/aggregate"
-    do
-        if printf '%s' "$spec" | grep -q "\"${path}\""; then
-            ok "OpenAPI 已注册 ${path}"
-        else
-            bad "OpenAPI 缺少 ${path}（对应文件未同步或服务未重启）"
-        fi
-    done
+    # 公网入口通常把 /openapi.json 交给登录门禁（307 → /login），因此改为
+    # 按状态码探测：401/403/422 = 路由存在；404 = 缺失；405 = 方法不匹配
+    probe_route() {
+        local method="$1" path="$2" code
+        code="$(curl -sS -o /dev/null -m "$CURL_TIMEOUT" -w '%{http_code}' \
+            -X "$method" "$BASE_URL$path" 2>/dev/null || true)"
+        case "$code" in
+            404|000|"") bad "路由缺失: $method $path（http=${code:-N/A}）" ;;
+            405)        bad "路由方法不匹配: $method $path（http=405）" ;;
+            *)          ok "路由存在: $method $path（http=$code）" ;;
+        esac
+    }
+
+    probe_route GET  /api/v1/lbs/nearby
+    probe_route GET  /api/v1/lbs/resources/verify/location
+    probe_route POST /api/v1/tasks/composite
+    probe_route POST /api/v1/deals/verify/dispute
+    probe_route POST /api/v1/deals/verify/arbitrate
+    probe_route GET  /api/v1/trust/profiles/verify/aggregate
 }
 
 # ---------------------------------------------------------------------------
