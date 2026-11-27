@@ -8,6 +8,7 @@ deploy/umcp-backup.service
 deploy/umcp-backup.timer
 deploy/umcp-healthwatch.service
 deploy/umcp-healthwatch.timer
+deploy/verify.sh
 src/umcp_core/layers/l1/access.py
 src/umcp_core/layers/l2/__init__.py
 src/umcp_core/layers/l2/abstraction.py
