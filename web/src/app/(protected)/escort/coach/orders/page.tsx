@@ -7,7 +7,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
-import { formatCarType } from "@/types/escort";
+import { formatCarType, formatOrderNo } from "@/types/escort";
 
 export default function CoachOrdersPage() {
   const router = useRouter();
@@ -46,7 +46,9 @@ export default function CoachOrdersPage() {
               onClick={() => router.push(`/escort/coach/orders/${order.task_id}`)}
             >
               <div className="flex justify-between items-start mb-2">
-                <span className="text-sm text-gray-500">{order.task_id.slice(0, 8)}</span>
+                <span className="text-sm text-gray-500">
+                  {formatOrderNo(order.order_no, order.task_id)}
+                </span>
                 <OrderStatusBadge
                   status={order.status}
                   awaitingPayment={
@@ -55,6 +57,9 @@ export default function CoachOrdersPage() {
                 />
               </div>
               <p className="text-sm">{formatCarType(order.car_type)} · {order.duration_hours}小时</p>
+              <p className="mt-1 text-xs text-gray-500">
+                客户：{order.demander_name || "未命名客户"}
+              </p>
               {order.status === "completed" && !order.customer_confirmed_at && (
                 <p className="mt-1 text-xs text-orange-500">等待客户确认支付</p>
               )}

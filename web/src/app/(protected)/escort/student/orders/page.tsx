@@ -9,7 +9,7 @@ import { apiClient } from "@/lib/api-client";
 import { playSuccessTone, speak } from "@/lib/notification-sound";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { Button } from "@/components/ui/button";
-import { formatCarType, formatEstimate } from "@/types/escort";
+import { formatCarType, formatEstimate, formatOrderNo } from "@/types/escort";
 
 /** 时间字符串格式化（空值返回「—」）。 */
 function formatTime(value: string | null | undefined): string {
@@ -77,7 +77,9 @@ export default function StudentOrdersPage() {
                 onClick={() => router.push(`/escort/student/orders/${order.task_id}`)}
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-sm text-gray-500">{order.task_id.slice(0, 8)}</span>
+                  <span className="text-sm text-gray-500">
+                    {formatOrderNo(order.order_no, order.task_id)}
+                  </span>
                   <OrderStatusBadge status={order.status} />
                 </div>
 

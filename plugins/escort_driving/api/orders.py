@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+import zlib
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -85,6 +86,8 @@ class OrderInfo(BaseModel):
     check_out_at: str | None = None
     customer_confirmed_at: str | None = None
     settled_amount: float | None = None
+    order_no: str | None = None
+    demander_name: str | None = None
 
 
 class ScheduledOrderInfo(BaseModel):
@@ -120,6 +123,38 @@ def _iso_utc(dt: datetime | None) -> str | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+_order_no_seq = 0
+_order_no_seq_lock = threading.Lock()
+# 订单号按北京时间（东八区）生成，与前端展示的下单时间一致
+_ORDER_NO_TZ = timezone(timedelta(hours=8))
+
+
+def _order_no_time(dt: datetime) -> datetime:
+    """把（默认 UTC 的）时间转换为订单号使用的北京时间。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_ORDER_NO_TZ)
+
+
+def _new_order_no(now: datetime) -> str:
+    """生成订单号：年月日时分 + 5 位序号（进程内自增）。"""
+    global _order_no_seq
+    with _order_no_seq_lock:
+        _order_no_seq = (_order_no_seq + 1) % 100000
+        seq = _order_no_seq
+    return f"{_order_no_time(now):%Y%m%d%H%M}{seq:05d}"
+
+
+def _order_no_of(task: Any) -> str:
+    """取订单号；历史订单未落库序号时按 task_id 派生出稳定的 5 位序号。"""
+    order_no = task.structured_fields.get("order_no")
+    if order_no:
+        return str(order_no)
+    created = getattr(task, "created_at", None) or datetime.utcnow()
+    seq = zlib.crc32(str(task.task_id).encode("utf-8")) % 100000
+    return f"{_order_no_time(created):%Y%m%d%H%M}{seq:05d}"
 
 
 def _pick_coaches_for_order(
@@ -429,7 +464,23 @@ def apply_check_out(
     _sync_deal_status(server, deal, DealStatus.COMPLETED)
 
 
-def _task_to_order_info(task: EscortTask) -> OrderInfo:
+def _task_to_order_info(task: EscortTask, server: Any | None = None) -> OrderInfo:
+    spatio = task.spatio_temporal
+    # Task 仓储不持久化 spatio_temporal，历史订单的坐标回落到结构化字段
+    origin_lat = (
+        spatio.origin_lat if spatio is not None else task.structured_fields.get("origin_lat")
+    )
+    origin_lng = (
+        spatio.origin_lng if spatio is not None else task.structured_fields.get("origin_lng")
+    )
+    # 司机端展示客户姓名而不是 ID（查不到用户时前端回退展示 ID）
+    demander_name: str | None = None
+    if server is not None:
+        user_repo = getattr(server, "user_repo", None)
+        if user_repo is not None:
+            demander = user_repo.find_by_id(task.demander_id)
+            if demander is not None:
+                demander_name = getattr(demander, "name", None) or None
     return OrderInfo(
         task_id=task.task_id,
         order_type=_order_type_of(task),
@@ -437,12 +488,8 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         demander_id=task.demander_id,
         car_type=task.structured_fields.get("car_type", ""),
         origin_address=task.structured_fields.get("origin_address"),
-        origin_lat=(
-            task.spatio_temporal.origin_lat if task.spatio_temporal else None
-        ),
-        origin_lng=(
-            task.spatio_temporal.origin_lng if task.spatio_temporal else None
-        ),
+        origin_lat=origin_lat,
+        origin_lng=origin_lng,
         duration_hours=task.structured_fields.get("duration_hours", 0),
         assigned_resource_id=task.assigned_resource_id,
         title=task.title,
@@ -454,6 +501,8 @@ def _task_to_order_info(task: EscortTask) -> OrderInfo:
         check_out_at=task.structured_fields.get("check_out_at"),
         customer_confirmed_at=task.structured_fields.get("customer_confirmed_at"),
         settled_amount=task.structured_fields.get("settled_amount"),
+        order_no=_order_no_of(task),
+        demander_name=demander_name,
     )
 
 
@@ -512,6 +561,8 @@ async def create_order(
     )
     task.title = req.title
     task.description = req.description
+    # 订单号：年月日时分 + 5 位序号，落库后前端不再依赖 task_id 片段展示
+    task.structured_fields["order_no"] = _new_order_no(datetime.utcnow())
 
     if req.order_type == "SCHEDULED":
         # 预约单：调 ScheduledMatchStrategy 返回 Top3，不自动 publish
@@ -554,7 +605,9 @@ async def create_order(
             "timestamp": datetime.utcnow().isoformat(),
             "data": {
                 "task_id": task.task_id,
+                "order_no": task.structured_fields.get("order_no"),
                 "demander_id": task.demander_id,
+                "demander_name": getattr(current_user, "name", None) or None,
                 "origin_lat": req.origin_lat,
                 "origin_lng": req.origin_lng,
                 "origin_address": req.origin_address,
@@ -578,7 +631,7 @@ async def create_order(
         except Exception:
             pass
 
-    return ok(_task_to_order_info(task).model_dump())
+    return ok(_task_to_order_info(task, server).model_dump())
 
 
 @router.get("/orders", response_model=Envelope)
@@ -597,7 +650,7 @@ async def list_orders(
         tasks = server.task_repo.find_by_demander(demander_id)
     else:
         raise ValidationError(message="demander_id 或 coach_id 至少提供一个")
-    orders = [_task_to_order_info(t).model_dump() for t in tasks]
+    orders = [_task_to_order_info(t, server).model_dump() for t in tasks]
     orders.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return ok(data=orders)
 
@@ -614,7 +667,7 @@ async def list_available_orders(
     """
     tasks = server.task_repo.find_by_status(TaskStatus.PUBLISHED)
     available = [
-        _task_to_order_info(t).model_dump()
+        _task_to_order_info(t, server).model_dump()
         for t in tasks
         if t.domain_tag.value == "escort" and _order_type_of(t) == "REALTIME"
     ]
@@ -651,7 +704,7 @@ async def get_order(
     task = server.task_repo.find_by_id(task_id)
     if task is None:
         raise NotFoundError(message=f"订单 {task_id} 不存在")
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     # 实时单与预约单都通过 Deal 承载资金状态，统一反查最新 deal
     deal = _latest_deal(server, task_id)
     if deal is not None:
@@ -728,7 +781,7 @@ async def cancel_order(
                     except Exception:
                         pass
 
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     info.cancel_penalty = penalty
     return ok(info.model_dump())
 
@@ -837,7 +890,7 @@ async def claim_order(
         except Exception:
             pass
 
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     info.deal_id = deal.deal_id
     return ok(info.model_dump())
 
@@ -860,7 +913,7 @@ async def check_in_order(
     deal = _latest_deal(server, task_id)
     apply_check_in(server, task, deal, req.coach_id, req.lat, req.lng)
 
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     if deal is not None:
         info.deal_id = deal.deal_id
     return ok(info.model_dump())
@@ -884,7 +937,7 @@ async def check_out_order(
     deal = _latest_deal(server, task_id)
     apply_check_out(server, task, deal)
 
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     if deal is not None:
         info.deal_id = deal.deal_id
     return ok(info.model_dump())
@@ -909,7 +962,7 @@ async def confirm_order_payment(
     if task.status != TaskStatus.COMPLETED:
         raise IllegalStateError(message=f"订单状态 {task.status} 不允许确认支付")
     if task.structured_fields.get("customer_confirmed_at"):
-        return ok(_task_to_order_info(task).model_dump())
+        return ok(_task_to_order_info(task, server).model_dump())
 
     deal = _latest_deal(server, task_id)
     # 历史订单可能没有 Deal，用临时交易完成计价，不落库
@@ -942,7 +995,7 @@ async def confirm_order_payment(
         )
         server.deal_repo.save(deal)
 
-    info = _task_to_order_info(task)
+    info = _task_to_order_info(task, server)
     info.deal_id = deal.deal_id if deal is not None else None
     return ok(info.model_dump())
 

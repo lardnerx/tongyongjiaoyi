@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   estimateAmount,
   formatCarType,
+  formatOrderNo,
   unitPriceOf,
 } from "@/types/escort";
 
@@ -82,7 +83,9 @@ export default function CoachSettlementPage() {
         <div className="space-y-2 rounded-lg border bg-white p-4">
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">订单编号</span>
-            <span className="font-mono">{order.task_id.slice(0, 8)}</span>
+            <span className="font-mono">
+              {formatOrderNo(order.order_no, order.task_id)}
+            </span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">车型</span>

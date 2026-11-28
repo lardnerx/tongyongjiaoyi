@@ -28,7 +28,7 @@ declare global {
 
 let sdkLoaded: Promise<void> | null = null;
 
-function loadAmapSDK(): Promise<void> {
+export function loadAmapSDK(): Promise<void> {
   if (sdkLoaded) return sdkLoaded;
   sdkLoaded = new Promise((resolve, reject) => {
     const key = process.env.NEXT_PUBLIC_AMAP_KEY || "";
@@ -37,13 +37,37 @@ function loadAmapSDK(): Promise<void> {
       window._AMapSecurityConfig = { securityJsCode: securityCode };
     }
     const script = document.createElement("script");
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`;
+    // Geocoder 用于把定位坐标解析成具体地址
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Geocoder`;
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("高德地图 SDK 加载失败"));
     document.head.appendChild(script);
   });
   return sdkLoaded;
+}
+
+/** 逆地理编码：坐标 → 具体地址；SDK 未就绪或失败时返回空字符串。 */
+export function reverseGeocodeAddress(lat: number, lng: number): Promise<string> {
+  return new Promise((resolve) => {
+    const AMap = typeof window !== "undefined" ? window.AMap : null;
+    if (!AMap?.Geocoder) {
+      resolve("");
+      return;
+    }
+    try {
+      const geocoder = new AMap.Geocoder();
+      geocoder.getAddress([lng, lat], (status: string, result: any) => {
+        const address =
+          status === "complete" && result?.info === "OK"
+            ? result?.regeocode?.formattedAddress
+            : "";
+        resolve(address || "");
+      });
+    } catch {
+      resolve("");
+    }
+  });
 }
 
 export function MapView({

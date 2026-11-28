@@ -14,10 +14,10 @@ import {
   setSoundEnabled,
   speak,
 } from "@/lib/notification-sound";
-import { MapView } from "@/components/map-view";
+import { MapView, loadAmapSDK, reverseGeocodeAddress } from "@/components/map-view";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
-import { formatCarType, formatEstimate } from "@/types/escort";
+import { formatCarType, formatEstimate, formatOrderNo } from "@/types/escort";
 
 interface OrderWithLocation extends OrderInfo {
   origin_lat?: number;
@@ -47,6 +47,7 @@ export default function CoachHallPage() {
   const [error, setError] = useState("");
   const [mapMode, setMapMode] = useState(false);
   const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [driverAddress, setDriverAddress] = useState("");
   const { claimedOrderIds } = useOrderRealtimeStore();
   // 新单弹窗与提示音开关
   const [soundOn, setSoundOn] = useState(true);
@@ -75,33 +76,28 @@ export default function CoachHallPage() {
     notifyNewOrder();
   }, []);
 
-  // 教练上线
+  // 教练上线（同时把当前位置解析成具体地址，供大厅展示）
   useEffect(() => {
     if (!user?.user_id) return;
-    // 使用浏览器定位
+    const goOnline = (lat: number, lng: number) => {
+      setDriverPos({ lat, lng });
+      apiClient
+        .post(`/escort/coaches/${user.user_id}/online`, { lat, lng })
+        .catch(() => {});
+      loadAmapSDK()
+        .then(() => reverseGeocodeAddress(lat, lng))
+        .then((address) => {
+          if (address) setDriverAddress(address);
+        })
+        .catch(() => {});
+    };
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setDriverPos({ lat, lng });
-          apiClient
-            .post(`/escort/coaches/${user.user_id}/online`, { lat, lng })
-            .catch(() => {});
-        },
-        () => {
-          // 定位失败，使用默认坐标
-          setDriverPos({ lat: 39.9, lng: 116.4 });
-          apiClient
-            .post(`/escort/coaches/${user.user_id}/online`, { lat: 39.9, lng: 116.4 })
-            .catch(() => {});
-        }
+        (pos) => goOnline(pos.coords.latitude, pos.coords.longitude),
+        () => goOnline(39.9, 116.4)
       );
     } else {
-      setDriverPos({ lat: 39.9, lng: 116.4 });
-      apiClient
-        .post(`/escort/coaches/${user.user_id}/online`, { lat: 39.9, lng: 116.4 })
-        .catch(() => {});
+      goOnline(39.9, 116.4);
     }
     return () => {
       apiClient.post(`/escort/coaches/${user.user_id}/offline`, null).catch(() => {});
@@ -126,7 +122,21 @@ export default function CoachHallPage() {
         setPendingOrders((prev) => {
           const merged = new Map(prev.map((o) => [o.task_id, o]));
           for (const order of list) {
-            if (!merged.has(order.task_id)) merged.set(order.task_id, order);
+            const existing = merged.get(order.task_id);
+            // 以接口数据为准（补齐订单号/客户姓名/坐标），但绝不丢失已有坐标
+            merged.set(
+              order.task_id,
+              existing
+                ? {
+                    ...existing,
+                    ...order,
+                    origin_lat: order.origin_lat ?? existing.origin_lat,
+                    origin_lng: order.origin_lng ?? existing.origin_lng,
+                    order_no: order.order_no ?? existing.order_no,
+                    demander_name: order.demander_name ?? existing.demander_name,
+                  }
+                : order
+            );
           }
           return Array.from(merged.values());
         });
@@ -149,6 +159,8 @@ export default function CoachHallPage() {
       order_type: "REALTIME",
       status: "published",
       demander_id: data.demander_id as string,
+      demander_name: (data.demander_name as string) ?? null,
+      order_no: (data.order_no as string) ?? null,
       car_type: data.car_type as string,
       origin_address: (data.origin_address as string) ?? null,
       duration_hours: data.duration_hours as number,
@@ -256,9 +268,11 @@ export default function CoachHallPage() {
         {/* 司机当前位置 */}
         <p className="text-xs text-gray-500">
           我的位置：
-          {driverPos
-            ? `已定位（${driverPos.lat.toFixed(4)}, ${driverPos.lng.toFixed(4)}）`
-            : "定位中..."}
+          {driverAddress
+            ? driverAddress
+            : driverPos
+              ? `已定位（${driverPos.lat.toFixed(4)}, ${driverPos.lng.toFixed(4)}）`
+              : "定位中..."}
         </p>
 
         {/* 新订单弹窗提示 */}
@@ -323,7 +337,9 @@ export default function CoachHallPage() {
               return (
               <div key={order.task_id} className="bg-white rounded-lg border p-4 space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">订单 {order.task_id.slice(0, 8)}</span>
+                  <span className="text-gray-500">
+                    订单 {formatOrderNo(order.order_no, order.task_id)}
+                  </span>
                   <span className="font-medium">{formatCarType(order.car_type)}</span>
                 </div>
                 <p className="text-sm text-gray-700">
@@ -347,14 +363,17 @@ export default function CoachHallPage() {
                         : "定位中..."}
                   </span>
                 </div>
-                <div className="flex justify-between text-xs text-gray-400">
+                <div className="flex justify-between gap-3 text-xs text-gray-500">
                   <span>
                     {order.created_at
                       ? `下单时间：${new Date(order.created_at).toLocaleTimeString("zh-CN", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}`
-                      : `客户：${order.demander_id.slice(0, 8)}`}
+                      : "下单时间：—"}
+                  </span>
+                  <span className="truncate">
+                    客户：{order.demander_name || "未命名客户"}
                   </span>
                 </div>
                 <Button

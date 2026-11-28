@@ -116,7 +116,7 @@ export default function CoachServicePage() {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">客户</span>
-            <span>{order.demander_id}</span>
+            <span>{order.demander_name || "未命名客户"}</span>
           </div>
           <div className="flex justify-between gap-4 text-sm">
             <span className="shrink-0 text-gray-500">上车地点</span>

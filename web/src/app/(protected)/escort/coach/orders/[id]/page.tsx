@@ -113,7 +113,7 @@ export default function CoachOrderDetailPage() {
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">客户</span>
-            <span>{order.demander_id}</span>
+            <span>{order.demander_name || "未命名客户"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">车型</span>

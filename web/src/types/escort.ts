@@ -86,6 +86,19 @@ export interface OrderInfo {
   check_out_at?: string | null;
   customer_confirmed_at?: string | null;
   settled_amount?: number | null;
+  /** 订单号：年月日时分 + 5 位序号。 */
+  order_no?: string | null;
+  /** 下单客户姓名（后端解析，缺失时回退展示 demander_id）。 */
+  demander_name?: string | null;
+}
+
+/** 订单号展示：优先使用后端 order_no，历史订单回退 task_id 前 8 位。 */
+export function formatOrderNo(
+  orderNo: string | null | undefined,
+  taskId?: string | null
+): string {
+  if (orderNo) return orderNo;
+  return taskId ? taskId.slice(0, 8) : "—";
 }
 
 /** 评价信息。 */

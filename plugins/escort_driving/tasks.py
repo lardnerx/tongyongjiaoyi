@@ -46,6 +46,10 @@ class EscortTask(StandardTask):
         self.coach_level_pref = coach_level_pref
 
         self.structured_fields["car_type"] = car_type
+        # 集合点坐标同时写入结构化字段：Task 仓储不持久化 spatio_temporal，
+        # 仅靠内存对象会导致订单刷新后丢失坐标（前端无法计算距离/打点）。
+        self.structured_fields["origin_lat"] = origin_lat
+        self.structured_fields["origin_lng"] = origin_lng
         self.structured_fields["required_skills"] = required_skills or []
         self.structured_fields["duration_hours"] = duration_hours
         self.structured_fields["order_type"] = order_type

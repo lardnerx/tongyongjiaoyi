@@ -6,7 +6,7 @@ import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 import type { OrderInfo } from "@/types/escort";
-import { formatCarType } from "@/types/escort";
+import { formatCarType, formatOrderNo } from "@/types/escort";
 
 /** 时间字符串格式化（空值返回「—」）。 */
 function formatTime(value: string | null | undefined): string {
@@ -76,7 +76,7 @@ export default function CoachIncomePage() {
             >
               <div className="flex justify-between items-start">
                 <span className="text-sm text-gray-500">
-                  {order.task_id.slice(0, 8)}
+                  {formatOrderNo(order.order_no, order.task_id)}
                 </span>
                 <span className="font-medium text-green-600">
                   +¥{(order.settled_amount ?? 0).toFixed(2)}
