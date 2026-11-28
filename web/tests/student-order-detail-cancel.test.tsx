@@ -1,5 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+
+afterEach(() => cleanup());
 
 // mock 路由参数与 hooks
 vi.mock("next/navigation", () => ({
@@ -67,12 +69,21 @@ vi.mock("@/lib/api-client", () => ({
   },
 }));
 
+// 页面确认支付后需要刷新订单列表，测试不挂载 QueryClientProvider
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
+});
+
 import StudentOrderDetail from "@/app/(protected)/escort/student/orders/[id]/page";
 
 describe("StudentOrderDetail 取消功能", () => {
   it("实时单 published 状态应显示倒计时与取消按钮", () => {
     render(<StudentOrderDetail />);
-    expect(screen.getByText(/剩余/)).toBeTruthy();
+    expect(screen.getByText(/剩余等待时间/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /取消订单/ })).toBeTruthy();
   });
 

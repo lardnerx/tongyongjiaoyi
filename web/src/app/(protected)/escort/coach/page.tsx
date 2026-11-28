@@ -276,6 +276,7 @@ export default function CoachHallPage() {
           <div className="space-y-2">
             <MapView
               points={mapPoints}
+              center={driverPos ?? undefined}
               className="w-full h-96 rounded-lg"
               onPointClick={(taskId) => handleClaim(taskId)}
             />

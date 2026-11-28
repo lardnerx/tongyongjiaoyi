@@ -72,6 +72,20 @@ export function MapView({
           center: defaultCenter,
         });
         setReady(true);
+        // 未指定中心点时，默认定位到当前位置
+        if (!center && typeof navigator !== "undefined" && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (cancelled) return;
+              mapInstance.current?.setCenter?.([
+                pos.coords.longitude,
+                pos.coords.latitude,
+              ]);
+            },
+            () => {},
+            { enableHighAccuracy: true, timeout: 8000 }
+          );
+        }
       })
       .catch(() => {
         setSdkFailed(true);
@@ -85,6 +99,14 @@ export function MapView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 外部传入的中心点变化时跟随（如定位完成后回填当前位置）
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !ready || !center) return;
+    map.setCenter?.([center.lng, center.lat]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center?.lat, center?.lng, ready]);
 
   // 更新标记
   useEffect(() => {

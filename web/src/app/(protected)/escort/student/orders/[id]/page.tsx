@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOrder, useReviews, useInvalidateOrder } from "@/hooks/use-orders";
 import { useDeal, usePayment } from "@/hooks/use-scheduled";
@@ -9,7 +10,7 @@ import { useSendFriendRequest } from "@/hooks/use-friends";
 import { useWsEvent } from "@/hooks/use-ws-events";
 import { useOrderRealtimeStore } from "@/lib/order-realtime-store";
 import { apiClient } from "@/lib/api-client";
-import { speak } from "@/lib/notification-sound";
+import { playSuccessTone, speak } from "@/lib/notification-sound";
 import { useCancelRules } from "@/hooks/use-cancel-rules";
 import { CountdownTimer } from "@/components/countdown-timer";
 import { CancelDialog } from "@/components/cancel-dialog";
@@ -86,6 +87,27 @@ export default function StudentOrderDetailPage() {
   const isScheduled = order?.order_type === "SCHEDULED";
 
   const sendFriendRequest = useSendFriendRequest();
+
+  // 服务完成后确认并支付
+  const queryClient = useQueryClient();
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
+  const handleConfirmPay = async () => {
+    if (!window.confirm("确认服务已完成？确认后将支付本单费用。")) return;
+    setPaying(true);
+    setPayError("");
+    try {
+      await apiClient.post(`/escort/orders/${taskId}/confirm`, {});
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["orders", user?.user_id] });
+      playSuccessTone();
+      speak("支付成功");
+    } catch {
+      setPayError("确认支付失败，请重试");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const cancelRules = useCancelRules();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -174,6 +196,31 @@ export default function StudentOrderDetailPage() {
             预估价格按 {unitPriceOf(order.car_type)} 元/小时 × {order.duration_hours} 小时估算，实际以订单结算为准。
           </p>
         )}
+
+        {/* 服务已完成：待支付 → 支付入口；已支付 → 支付结果 */}
+        {currentStatus === "completed" &&
+          (order.customer_confirmed_at ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center space-y-1">
+              <p className="font-medium text-green-800">已支付，订单已完成</p>
+              {order.settled_amount != null && (
+                <p className="text-sm text-green-700">
+                  实付金额：¥{order.settled_amount.toFixed(2)}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border bg-white p-4 space-y-2">
+              <p className="text-sm text-gray-600">
+                司机已结束服务，请确认并支付本单费用。
+              </p>
+              {payError && <p className="text-sm text-red-500">{payError}</p>}
+              <Button className="w-full" onClick={handleConfirmPay} disabled={paying}>
+                {paying
+                  ? "支付中..."
+                  : `确认完成并支付 ${formatEstimate(order.car_type, order.duration_hours)}`}
+              </Button>
+            </div>
+          ))}
 
         {/* 司机已开始服务：与司机端同步计时 */}
         {currentStatus === "in_progress" && (

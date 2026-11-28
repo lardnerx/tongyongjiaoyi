@@ -61,6 +61,7 @@ web/src/components/map-view.tsx
 web/src/components/escort-order-fields.tsx
 web/src/components/payment-order-summary.tsx
 web/src/components/mock-payment.tsx
+web/src/components/order-status-badge.tsx
 web/src/components/cancel-dialog.tsx
 web/src/hooks/use-scheduled.ts
 web/src/hooks/use-orders.ts
@@ -87,4 +88,5 @@ web/src/app/(protected)/escort/coach/orders/page.tsx
 web/src/app/(protected)/escort/coach/orders/[id]/page.tsx
 web/src/app/(protected)/escort/coach/orders/[id]/service/page.tsx
 web/src/app/(protected)/escort/coach/orders/[id]/settlement/page.tsx
+web/src/app/(protected)/escort/coach/income/page.tsx
 web/src/types/escort.ts

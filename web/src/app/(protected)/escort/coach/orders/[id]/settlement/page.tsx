@@ -67,6 +67,17 @@ export default function CoachSettlementPage() {
           </p>
         </div>
 
+        {/* 收款状态 */}
+        {order.customer_confirmed_at ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+            <p className="font-medium text-green-800">客户已支付</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-center">
+            <p className="font-medium text-orange-800">等待客户确认支付</p>
+          </div>
+        )}
+
         {/* 结算明细 */}
         <div className="space-y-2 rounded-lg border bg-white p-4">
           <div className="flex justify-between text-sm">

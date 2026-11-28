@@ -96,7 +96,12 @@ export default function CoachOrderDetailPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold">订单详情</h1>
-            <OrderStatusBadge status={order.status as OrderStatus} />
+            <OrderStatusBadge
+              status={order.status as OrderStatus}
+              awaitingPayment={
+                order.status === "completed" && !order.customer_confirmed_at
+              }
+            />
           </div>
           <Button variant="ghost" onClick={() => router.push("/escort/coach/orders")}>返回</Button>
         </div>
@@ -131,6 +136,26 @@ export default function CoachOrderDetailPage() {
             </div>
           )}
         </div>
+
+        {/* 服务已完成：按客户支付状态区分展示 */}
+        {order.status === "completed" &&
+          (order.customer_confirmed_at ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center space-y-1">
+              <p className="font-medium text-green-800">客户已支付，订单已完成</p>
+              {order.settled_amount != null && (
+                <p className="text-sm text-green-700">
+                  结算金额：¥{order.settled_amount.toFixed(2)}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-center space-y-1">
+              <p className="font-medium text-orange-800">服务已完成，等待客户支付</p>
+              <p className="text-sm text-orange-600">
+                客户确认支付后，本单才会显示「已完成」并计入收入。
+              </p>
+            </div>
+          ))}
 
         {/* 预约单：待确认（deal pending + 已支付） */}
         {isScheduled && deal?.status === "pending" && (

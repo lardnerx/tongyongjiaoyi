@@ -98,20 +98,44 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* 司机余额卡片 */}
+        {/* 司机余额卡片（点击进入收入清单） */}
         {activeRole === "supplier" && (
-          <Card>
+          <Card
+            className="cursor-pointer transition hover:shadow-md"
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push("/escort/coach/income")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push("/escort/coach/income");
+              }
+            }}
+          >
             <CardContent className="py-5">
               <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">余额</p>
+                  <p className="text-sm text-gray-500">收入余额</p>
                   <p className="mt-1 text-3xl font-bold">
                     ¥{(balanceData?.balance ?? 0).toFixed(2)}
                   </p>
                 </div>
-                <p className="text-xs text-gray-400">
-                  已结算 {balanceData?.order_count ?? 0} 单
-                </p>
+                <div className="flex items-center gap-1 text-xs text-gray-400">
+                  <span>已结算 {balanceData?.order_count ?? 0} 单</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -148,6 +148,59 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
     }
   };
 
+  /**
+   * 定位到当前位置：优先高德定位，失败回落浏览器定位。
+   * silent=true 用于页面首次加载时自动定位（不显示「定位中」，失败仅提示）。
+   */
+  const locateCurrent = (silent = false) => {
+    if (!silent) {
+      setLocating(true);
+      setHint("");
+    }
+    const finish = (lat: number, lng: number, addr?: string) => {
+      setLocating(false);
+      applyWithGeocode(lat, lng, addr);
+    };
+    const fail = () => {
+      setLocating(false);
+      setHint("未获取到定位，请点击地图手动选择");
+    };
+    const browserLocate = () => {
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => finish(pos.coords.latitude, pos.coords.longitude),
+          fail,
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+        return;
+      }
+      fail();
+    };
+    const AMap = window.AMap;
+    if (!AMap?.Geolocation) {
+      browserLocate();
+      return;
+    }
+    try {
+      const geolocation = new AMap.Geolocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        showButton: false,
+        showMarker: false,
+        showCircle: false,
+      });
+      geolocation.getCurrentPosition((status: string, result: any) => {
+        if (status === "complete" && result.position) {
+          finish(result.position.lat, result.position.lng, result.formattedAddress);
+        } else {
+          browserLocate();
+        }
+      });
+    } catch {
+      browserLocate();
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     loadAmapSDK()
@@ -168,6 +221,10 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
           // 逆地理编码（失败时回落为经纬度，保证一定能选到位置）
           applyWithGeocode(lat, lng);
         });
+        // 进入页面默认使用当前位置作为上车地点（未预填坐标时）
+        if (!value) {
+          locateCurrent(true);
+        }
       })
       .catch(() => {
         // SDK 加载失败，显示降级 UI
@@ -183,35 +240,7 @@ export function AmapPicker({ value, onChange }: AmapPickerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLocate = () => {
-    const AMap = window.AMap;
-    if (!AMap) return;
-    setLocating(true);
-    setHint("");
-    try {
-      const geolocation = new AMap.Geolocation({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        showButton: false,
-        showMarker: false,
-        showCircle: false,
-      });
-      geolocation.getCurrentPosition((status: string, result: any) => {
-        setLocating(false);
-        if (status === "complete" && result.position) {
-          const lat = result.position.lat;
-          const lng = result.position.lng;
-          // 定位接口不一定返回 formattedAddress，统一再做一次逆地理编码
-          applyWithGeocode(lat, lng, result.formattedAddress);
-        } else {
-          setHint("未获取到定位，请点击地图手动选择");
-        }
-      });
-    } catch {
-      setLocating(false);
-      setHint("当前浏览器不支持定位，请点击地图手动选择");
-    }
-  };
+  const handleLocate = () => locateCurrent();
 
   const handleManualSubmit = () => {
     const lat = parseFloat(manualLat);

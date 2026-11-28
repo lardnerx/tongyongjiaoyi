@@ -20,7 +20,21 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+export function OrderStatusBadge({
+  status,
+  awaitingPayment = false,
+}: {
+  status: OrderStatus;
+  /** 已完成但客户尚未支付：展示「待客户支付」而不是「已完成」。 */
+  awaitingPayment?: boolean;
+}) {
+  if (awaitingPayment && status === "completed") {
+    return (
+      <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800">
+        待客户支付
+      </span>
+    );
+  }
   return (
     <span className={`px-2 py-1 rounded text-xs font-medium ${STATUS_COLORS[status]}`}>
       {STATUS_LABELS[status]}

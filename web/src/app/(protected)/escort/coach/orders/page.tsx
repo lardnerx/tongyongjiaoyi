@@ -20,6 +20,8 @@ export default function CoachOrdersPage() {
       apiClient.get<OrderInfo[]>(`/escort/orders?coach_id=${user?.user_id}`),
     enabled: !!user?.user_id,
     staleTime: 0,
+    // 客户支付后自动刷新「待客户支付 → 已完成」
+    refetchInterval: 10_000,
   });
 
   return (
@@ -45,9 +47,17 @@ export default function CoachOrdersPage() {
             >
               <div className="flex justify-between items-start mb-2">
                 <span className="text-sm text-gray-500">{order.task_id.slice(0, 8)}</span>
-                <OrderStatusBadge status={order.status} />
+                <OrderStatusBadge
+                  status={order.status}
+                  awaitingPayment={
+                    order.status === "completed" && !order.customer_confirmed_at
+                  }
+                />
               </div>
               <p className="text-sm">{formatCarType(order.car_type)} · {order.duration_hours}小时</p>
+              {order.status === "completed" && !order.customer_confirmed_at && (
+                <p className="mt-1 text-xs text-orange-500">等待客户确认支付</p>
+              )}
             </div>
           ))}
         </div>
