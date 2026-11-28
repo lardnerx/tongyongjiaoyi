@@ -194,15 +194,31 @@ export default function CoachHallPage() {
 
   const visibleOrders = pendingOrders.filter((o) => !claimedOrderIds.has(o.task_id));
 
-  // 地图标记点
+  /** 订单上车点距司机的直线距离（公里）；未定位或订单无坐标时返回 null。 */
+  const distanceTo = (order: OrderWithLocation): number | null => {
+    if (!driverPos || order.origin_lat == null || order.origin_lng == null) {
+      return null;
+    }
+    return distanceKm(driverPos, {
+      lat: order.origin_lat,
+      lng: order.origin_lng,
+    });
+  };
+
+  // 地图标记点：待抢订单（标注距离）+ 司机当前位置（绿色标记）
   const mapPoints = visibleOrders
     .filter((o) => o.origin_lat != null && o.origin_lng != null)
-    .map((o) => ({
-      id: o.task_id,
-      lat: o.origin_lat!,
-      lng: o.origin_lng!,
-      label: `${formatCarType(o.car_type)} · ${o.duration_hours}h`,
-    }));
+    .map((o) => {
+      const distance = distanceTo(o);
+      return {
+        id: o.task_id,
+        lat: o.origin_lat!,
+        lng: o.origin_lng!,
+        label: `${formatCarType(o.car_type)} · ${o.duration_hours}h${
+          distance != null ? ` · ${distance.toFixed(1)}km` : ""
+        }`,
+      };
+    });
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -236,6 +252,14 @@ export default function CoachHallPage() {
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}
+
+        {/* 司机当前位置 */}
+        <p className="text-xs text-gray-500">
+          我的位置：
+          {driverPos
+            ? `已定位（${driverPos.lat.toFixed(4)}, ${driverPos.lng.toFixed(4)}）`
+            : "定位中..."}
+        </p>
 
         {/* 新订单弹窗提示 */}
         {orderToast && (
@@ -277,11 +301,12 @@ export default function CoachHallPage() {
             <MapView
               points={mapPoints}
               center={driverPos ?? undefined}
+              self={driverPos ?? undefined}
               className="w-full h-96 rounded-lg"
               onPointClick={(taskId) => handleClaim(taskId)}
             />
             <p className="text-xs text-gray-400 text-center">
-              点击地图上的标记可快速抢单
+              蓝色为待抢订单，绿色为我的位置；点击订单标记可快速抢单
             </p>
           </div>
         )}
@@ -293,7 +318,9 @@ export default function CoachHallPage() {
 
         {!mapMode && (
           <div className="space-y-3">
-            {visibleOrders.map((order) => (
+            {visibleOrders.map((order) => {
+              const distance = distanceTo(order);
+              return (
               <div key={order.task_id} className="bg-white rounded-lg border p-4 space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">订单 {order.task_id.slice(0, 8)}</span>
@@ -310,6 +337,16 @@ export default function CoachHallPage() {
                   <span>时长：{order.duration_hours} 小时</span>
                   <span>预估：{formatEstimate(order.car_type, order.duration_hours)}</span>
                 </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">距我</span>
+                  <span className="font-medium text-blue-600">
+                    {distance != null
+                      ? `${distance.toFixed(1)} km`
+                      : driverPos
+                        ? "距离未知"
+                        : "定位中..."}
+                  </span>
+                </div>
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>
                     {order.created_at
@@ -319,16 +356,6 @@ export default function CoachHallPage() {
                         })}`
                       : `客户：${order.demander_id.slice(0, 8)}`}
                   </span>
-                  {driverPos && order.origin_lat != null && order.origin_lng != null && (
-                    <span>
-                      距离约{" "}
-                      {distanceKm(driverPos, {
-                        lat: order.origin_lat,
-                        lng: order.origin_lng,
-                      }).toFixed(1)}{" "}
-                      km
-                    </span>
-                  )}
                 </div>
                 <Button
                   className="w-full"
@@ -338,7 +365,8 @@ export default function CoachHallPage() {
                   {claiming === order.task_id ? "抢单中..." : "立即抢单"}
                 </Button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

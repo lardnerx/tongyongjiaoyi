@@ -12,6 +12,8 @@ interface MapPoint {
 interface MapViewProps {
   points: MapPoint[];
   center?: { lat: number; lng: number };
+  /** 当前用户位置（司机），以绿色标记显示在地图上。 */
+  self?: { lat: number; lng: number; label?: string };
   zoom?: number;
   className?: string;
   onPointClick?: (id: string) => void;
@@ -47,6 +49,7 @@ function loadAmapSDK(): Promise<void> {
 export function MapView({
   points,
   center,
+  self,
   zoom = 13,
   className = "w-full h-80",
   onPointClick,
@@ -54,6 +57,7 @@ export function MapView({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const selfMarkerRef = useRef<any>(null);
   const [sdkFailed, setSdkFailed] = useState(false);
   // 地图实例异步创建完成，标记绘制需要等它就绪后再执行
   const [ready, setReady] = useState(false);
@@ -136,11 +140,36 @@ export function MapView({
       markersRef.current.push(marker);
     });
 
-    // 自适应视野
-    if (points.length > 0) {
-      map.setFitView(markersRef.current, false, [40, 40, 40, 40]);
+    // 当前用户位置标记（绿色），便于区分「我的位置」与待抢订单
+    if (self) {
+      if (selfMarkerRef.current) {
+        selfMarkerRef.current.setPosition?.([self.lng, self.lat]);
+      } else {
+        selfMarkerRef.current = new AMap.Marker({
+          position: [self.lng, self.lat],
+          map,
+          zIndex: 200,
+          title: self.label || "我的位置",
+          label: {
+            content: `<div style="background:#16a34a;color:#fff;padding:2px 6px;border-radius:4px;font-size:12px;white-space:nowrap">${self.label || "我的位置"}</div>`,
+            direction: "top",
+            offset: new AMap.Pixel(0, -4),
+          },
+        });
+      }
+    } else if (selfMarkerRef.current) {
+      map.remove(selfMarkerRef.current);
+      selfMarkerRef.current = null;
     }
-  }, [points, ready, sdkFailed, onPointClick]);
+
+    // 自适应视野（同时包含「我的位置」）
+    if (points.length > 0) {
+      const fitTargets = selfMarkerRef.current
+        ? [...markersRef.current, selfMarkerRef.current]
+        : markersRef.current;
+      map.setFitView(fitTargets, false, [40, 40, 40, 40]);
+    }
+  }, [points, self, ready, sdkFailed, onPointClick]);
 
   if (sdkFailed) {
     return (
